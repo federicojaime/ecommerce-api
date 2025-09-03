@@ -1,0 +1,27 @@
+{
+    "name": "ecommerce/api",
+    "description": "Ecommerce API with Slim Framework",
+    "type": "project",
+    "require": {
+        "php": "^7.4 || ^8.0",
+        "slim/slim": "^4.10",
+        "slim/psr7": "^1.6",
+        "firebase/php-jwt": "^6.0",
+        "vlucas/phpdotenv": "^5.4",
+        "respect/validation": "^2.2",
+        "php-di/php-di": "^7.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    },
+    "scripts": {
+        "start": "php -S localhost:8000 -t public"
+    },
+    "config": {
+        "allow-plugins": {
+            "phpstan/extension-installer": true
+        }
+    }
+}
