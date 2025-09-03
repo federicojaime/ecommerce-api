@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 namespace App\Middleware;
 
 use App\Utils\JWT;
@@ -25,7 +25,6 @@ class AuthMiddleware {
             return $response->withStatus(401)->withHeader('Content-Type', 'application/json');
         }
 
-        // Agregar usuario al request
         $request = $request->withAttribute('user', $decoded);
         
         return $handler->handle($request);
