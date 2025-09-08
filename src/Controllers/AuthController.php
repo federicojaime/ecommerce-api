@@ -12,8 +12,36 @@ class AuthController {
         $this->db = $database->getConnection();
     }
 
+    /**
+     * Método helper para obtener datos del request de forma segura
+     */
+    private function getRequestData(Request $request): array 
+    {
+        $contentType = $request->getHeaderLine('Content-Type');
+        
+        // Intentar JSON primero
+        if (strpos($contentType, 'application/json') !== false) {
+            $body = $request->getBody()->getContents();
+            if (!empty($body)) {
+                $data = json_decode($body, true);
+                if (json_last_error() === JSON_ERROR_NONE && is_array($data)) {
+                    return $data;
+                }
+            }
+        }
+        
+        // Luego intentar form-data
+        $parsedBody = $request->getParsedBody();
+        if (is_array($parsedBody)) {
+            return $parsedBody;
+        }
+        
+        // Si todo falla, devolver array vacío
+        return [];
+    }
+
     public function login(Request $request, Response $response): Response {
-        $data = json_decode($request->getBody()->getContents(), true);
+        $data = $this->getRequestData($request);
         
         if (!isset($data['email']) || !isset($data['password'])) {
             $response->getBody()->write(json_encode(['error' => 'Email and password required']));
@@ -52,7 +80,7 @@ class AuthController {
     }
 
     public function register(Request $request, Response $response): Response {
-        $data = json_decode($request->getBody()->getContents(), true);
+        $data = $this->getRequestData($request);
         
         $required = ['name', 'email', 'password'];
         foreach ($required as $field) {

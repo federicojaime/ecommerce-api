@@ -14,6 +14,34 @@ class UserController
         $this->db = $database->getConnection();
     }
 
+    /**
+     * Método helper para obtener datos del request de forma segura
+     */
+    private function getRequestData(Request $request): array 
+    {
+        $contentType = $request->getHeaderLine('Content-Type');
+        
+        // Intentar JSON primero
+        if (strpos($contentType, 'application/json') !== false) {
+            $body = $request->getBody()->getContents();
+            if (!empty($body)) {
+                $data = json_decode($body, true);
+                if (json_last_error() === JSON_ERROR_NONE && is_array($data)) {
+                    return $data;
+                }
+            }
+        }
+        
+        // Luego intentar form-data
+        $parsedBody = $request->getParsedBody();
+        if (is_array($parsedBody)) {
+            return $parsedBody;
+        }
+        
+        // Si todo falla, devolver array vacío
+        return [];
+    }
+
     public function getAll(Request $request, Response $response): Response
     {
         $params = $request->getQueryParams();
@@ -53,7 +81,7 @@ class UserController
         $countStmt->execute($bindings);
         $total = $countStmt->fetch()['total'];
 
-        // Obtener usuarios - CORREGIDO: LIMIT y OFFSET directos
+        // Obtener usuarios
         $sql = "SELECT id, name, email, role, status, created_at, updated_at FROM users 
                 {$whereClause} ORDER BY id DESC LIMIT {$limit} OFFSET {$offset}";
 
@@ -94,7 +122,7 @@ class UserController
 
     public function create(Request $request, Response $response): Response
     {
-        $data = json_decode($request->getBody()->getContents(), true);
+        $data = $this->getRequestData($request);
 
         $required = ['name', 'email', 'password'];
         foreach ($required as $field) {
@@ -142,7 +170,7 @@ class UserController
     public function update(Request $request, Response $response, array $args): Response
     {
         $id = $args['id'];
-        $data = json_decode($request->getBody()->getContents(), true);
+        $data = $this->getRequestData($request);
 
         // Verificar que el usuario existe
         $checkStmt = $this->db->prepare("SELECT id FROM users WHERE id = ?");
@@ -153,7 +181,7 @@ class UserController
         }
 
         // Verificar email único (si se está actualizando)
-        if (isset($data['email'])) {
+        if (isset($data['email']) && !empty($data['email'])) {
             $stmt = $this->db->prepare("SELECT id FROM users WHERE email = ? AND id != ?");
             $stmt->execute([$data['email'], $id]);
             if ($stmt->fetch()) {
@@ -179,14 +207,17 @@ class UserController
             $params[] = password_hash($data['password'], PASSWORD_DEFAULT);
         }
 
-        if ($updateFields) {
-            $updateFields[] = "updated_at = CURRENT_TIMESTAMP";
-            $params[] = $id;
-
-            $sql = "UPDATE users SET " . implode(', ', $updateFields) . " WHERE id = ?";
-            $stmt = $this->db->prepare($sql);
-            $stmt->execute($params);
+        if (empty($updateFields)) {
+            $response->getBody()->write(json_encode(['error' => 'No valid fields to update']));
+            return $response->withStatus(400)->withHeader('Content-Type', 'application/json');
         }
+
+        $updateFields[] = "updated_at = CURRENT_TIMESTAMP";
+        $params[] = $id;
+
+        $sql = "UPDATE users SET " . implode(', ', $updateFields) . " WHERE id = ?";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
 
         $response->getBody()->write(json_encode(['message' => 'User updated successfully']));
         return $response->withHeader('Content-Type', 'application/json');

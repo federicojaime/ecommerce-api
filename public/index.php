@@ -1,86 +1,70 @@
 ﻿<?php
-use DI\Container;
-use Psr\Http\Message\ResponseInterface as Response;
-use Psr\Http\Message\ServerRequestInterface as Request;
-use Slim\Factory\AppFactory;
-
+// Imports al inicio
 require __DIR__ . '/../vendor/autoload.php';
 
-// Cargar variables de entorno
-$dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/..');
-$dotenv->load();
+use Slim\Factory\AppFactory;
+use Psr\Http\Message\ResponseInterface as Response;
+use Psr\Http\Message\ServerRequestInterface as Request;
 
-// Crear contenedor DI
-$container = new Container();
+// Diagnóstico completo
+echo "<h1>Diagnóstico PHP/Slim</h1>";
 
-// Configurar base de datos en el contenedor
-$container->set('database', function () {
-    return new App\Models\Database();
-});
+echo "<h2>1. Información PHP</h2>";
+echo "PHP Version: " . PHP_VERSION . "<br>";
+echo "Current Directory: " . __DIR__ . "<br>";
+echo "Document Root: " . $_SERVER['DOCUMENT_ROOT'] . "<br>";
 
-// Registrar controladores en el contenedor
-$container->set(App\Controllers\AuthController::class, function ($container) {
-    return new App\Controllers\AuthController($container->get('database'));
-});
+echo "<h2>2. Variables del servidor</h2>";
+echo "REQUEST_URI: " . $_SERVER['REQUEST_URI'] . "<br>";
+echo "REQUEST_METHOD: " . $_SERVER['REQUEST_METHOD'] . "<br>";
+echo "SCRIPT_NAME: " . $_SERVER['SCRIPT_NAME'] . "<br>";
+echo "PATH_INFO: " . ($_SERVER['PATH_INFO'] ?? 'not set') . "<br>";
+echo "QUERY_STRING: " . $_SERVER['QUERY_STRING'] . "<br>";
 
-$container->set(App\Controllers\ProductController::class, function ($container) {
-    return new App\Controllers\ProductController($container->get('database'));
-});
+echo "<h2>3. Verificar Autoload</h2>";
+echo "✓ vendor/autoload.php cargado correctamente<br>";
 
-$container->set(App\Controllers\CategoryController::class, function ($container) {
-    return new App\Controllers\CategoryController($container->get('database'));
-});
+echo "<h2>4. Verificar Slim</h2>";
+echo "✓ Clases de Slim importadas correctamente<br>";
 
-$container->set(App\Controllers\UserController::class, function ($container) {
-    return new App\Controllers\UserController($container->get('database'));
-});
+echo "<h2>5. Test de Slim básico</h2>";
 
-$container->set(App\Controllers\OrderController::class, function ($container) {
-    return new App\Controllers\OrderController($container->get('database'));
-});
+// Solo ejecutar Slim si es una petición específica
+if ($_SERVER['REQUEST_URI'] === '/ecommerce-api/public/' || $_SERVER['REQUEST_URI'] === '/ecommerce-api/public/index.php') {
+    echo "Ejecutando aplicación Slim...<br>";
+    
+    try {
+        $app = AppFactory::create();
+        
+        // Ruta de prueba
+        $app->get('/', function (Request $request, Response $response) {
+            $response->getBody()->write(json_encode([
+                'message' => 'Slim funcionando correctamente',
+                'status' => 'OK',
+                'timestamp' => date('Y-m-d H:i:s')
+            ]));
+            return $response->withHeader('Content-Type', 'application/json');
+        });
+        
+        $app->addRoutingMiddleware();
+        $app->addErrorMiddleware(true, true, true);
+        
+        echo "✓ Aplicación Slim configurada<br>";
+        echo "<hr>";
+        echo "Resultado de la aplicación:<br>";
+        
+        $app->run();
+        
+    } catch (Exception $e) {
+        echo "✗ Error ejecutando Slim: " . $e->getMessage() . "<br>";
+        echo "Stack trace:<br>";
+        echo "<pre>" . $e->getTraceAsString() . "</pre>";
+    }
+} else {
+    echo "Esta página es solo para diagnóstico.<br>";
+    echo "Para probar la aplicación Slim, ve a: <a href='/ecommerce-api/public/'>http://localhost/ecommerce-api/public/</a><br>";
+}
 
-$container->set(App\Controllers\DashboardController::class, function ($container) {
-    return new App\Controllers\DashboardController($container->get('database'));
-});
-
-AppFactory::setContainer($container);
-$app = AppFactory::create();
-
-// Middleware de CORS
-$app->add(function (Request $request, $handler): Response {
-    $response = $handler->handle($request);
-    return $response
-        ->withHeader('Access-Control-Allow-Origin', '*')
-        ->withHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Accept, Origin, Authorization')
-        ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-});
-
-// Manejar preflight requests
-$app->options('/{routes:.+}', function (Request $request, Response $response) {
-    return $response;
-});
-
-// Middleware para parsing del body
-$app->addBodyParsingMiddleware();
-
-// Middleware de routing
-$app->addRoutingMiddleware();
-
-// Middleware de errores
-$errorMiddleware = $app->addErrorMiddleware(true, true, true);
-
-// Cargar rutas
-$routes = require __DIR__ . '/../src/Routes/api.php';
-$routes($app);
-
-// Ruta de prueba
-$app->get('/', function (Request $request, Response $response) {
-    $response->getBody()->write(json_encode([
-        'message' => 'Ecommerce API v1.0',
-        'status' => 'running',
-        'timestamp' => date('Y-m-d H:i:s')
-    ]));
-    return $response->withHeader('Content-Type', 'application/json');
-});
-
-$app->run();
+echo "<h2>6. Información adicional</h2>";
+echo "Loaded extensions: " . implode(', ', get_loaded_extensions()) . "<br>";
+?>

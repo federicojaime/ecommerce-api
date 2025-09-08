@@ -14,6 +14,34 @@ class OrderController
         $this->db = $database->getConnection();
     }
 
+    /**
+     * Método helper para obtener datos del request de forma segura
+     */
+    private function getRequestData(Request $request): array 
+    {
+        $contentType = $request->getHeaderLine('Content-Type');
+        
+        // Intentar JSON primero
+        if (strpos($contentType, 'application/json') !== false) {
+            $body = $request->getBody()->getContents();
+            if (!empty($body)) {
+                $data = json_decode($body, true);
+                if (json_last_error() === JSON_ERROR_NONE && is_array($data)) {
+                    return $data;
+                }
+            }
+        }
+        
+        // Luego intentar form-data
+        $parsedBody = $request->getParsedBody();
+        if (is_array($parsedBody)) {
+            return $parsedBody;
+        }
+        
+        // Si todo falla, devolver array vacío
+        return [];
+    }
+
     public function getAll(Request $request, Response $response): Response
     {
         $params = $request->getQueryParams();
@@ -99,7 +127,7 @@ class OrderController
 
     public function create(Request $request, Response $response): Response
     {
-        $data = json_decode($request->getBody()->getContents(), true);
+        $data = $this->getRequestData($request);
 
         $required = ['customer_name', 'customer_email', 'items'];
         foreach ($required as $field) {
@@ -215,7 +243,7 @@ class OrderController
     public function updateStatus(Request $request, Response $response, array $args): Response
     {
         $id = $args['id'];
-        $data = json_decode($request->getBody()->getContents(), true);
+        $data = $this->getRequestData($request);
 
         if (empty($data['status'])) {
             $response->getBody()->write(json_encode(['error' => 'Status is required']));
@@ -262,11 +290,33 @@ class OrderController
             return $response->withStatus(400)->withHeader('Content-Type', 'application/json');
         }
 
-        $stmt = $this->db->prepare("DELETE FROM orders WHERE id = ?");
-        $stmt->execute([$id]);
+        try {
+            $this->db->beginTransaction();
 
-        $response->getBody()->write(json_encode(['message' => 'Order deleted successfully']));
-        return $response->withHeader('Content-Type', 'application/json');
+            // Restaurar stock si la orden está pendiente
+            if ($order['status'] === 'pending') {
+                $itemsStmt = $this->db->prepare("SELECT product_id, quantity FROM order_items WHERE order_id = ?");
+                $itemsStmt->execute([$id]);
+                $items = $itemsStmt->fetchAll();
+
+                foreach ($items as $item) {
+                    $updateStockStmt = $this->db->prepare("UPDATE products SET stock = stock + ? WHERE id = ?");
+                    $updateStockStmt->execute([$item['quantity'], $item['product_id']]);
+                }
+            }
+
+            $stmt = $this->db->prepare("DELETE FROM orders WHERE id = ?");
+            $stmt->execute([$id]);
+
+            $this->db->commit();
+
+            $response->getBody()->write(json_encode(['message' => 'Order deleted successfully']));
+            return $response->withHeader('Content-Type', 'application/json');
+        } catch (\Exception $e) {
+            $this->db->rollback();
+            $response->getBody()->write(json_encode(['error' => 'Failed to delete order']));
+            return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+        }
     }
 
     private function generateOrderNumber()

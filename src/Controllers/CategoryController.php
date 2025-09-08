@@ -11,6 +11,34 @@ class CategoryController {
         $this->db = $database->getConnection();
     }
 
+    /**
+     * Método helper para obtener datos del request de forma segura
+     */
+    private function getRequestData(Request $request): array 
+    {
+        $contentType = $request->getHeaderLine('Content-Type');
+        
+        // Intentar JSON primero
+        if (strpos($contentType, 'application/json') !== false) {
+            $body = $request->getBody()->getContents();
+            if (!empty($body)) {
+                $data = json_decode($body, true);
+                if (json_last_error() === JSON_ERROR_NONE && is_array($data)) {
+                    return $data;
+                }
+            }
+        }
+        
+        // Luego intentar form-data
+        $parsedBody = $request->getParsedBody();
+        if (is_array($parsedBody)) {
+            return $parsedBody;
+        }
+        
+        // Si todo falla, devolver array vacío
+        return [];
+    }
+
     public function getAll(Request $request, Response $response): Response {
         $sql = "SELECT c1.*, c2.name as parent_name,
                        (SELECT COUNT(*) FROM products WHERE category_id = c1.id) as products_count
@@ -52,7 +80,7 @@ class CategoryController {
     }
 
     public function create(Request $request, Response $response): Response {
-        $data = json_decode($request->getBody()->getContents(), true);
+        $data = $this->getRequestData($request);
         
         if (empty($data['name'])) {
             $response->getBody()->write(json_encode(['error' => 'Name is required']));
@@ -96,7 +124,7 @@ class CategoryController {
 
     public function update(Request $request, Response $response, array $args): Response {
         $id = $args['id'];
-        $data = json_decode($request->getBody()->getContents(), true);
+        $data = $this->getRequestData($request);
         
         // Verificar que la categoría existe
         $checkStmt = $this->db->prepare("SELECT id FROM categories WHERE id = ?");
@@ -109,7 +137,7 @@ class CategoryController {
         $updateFields = [];
         $params = [];
         
-        if (isset($data['name'])) {
+        if (isset($data['name']) && !empty($data['name'])) {
             $slug = $this->generateSlug($data['name']);
             
             // Verificar slug único (excluyendo la categoría actual)
@@ -134,14 +162,17 @@ class CategoryController {
             }
         }
         
-        if ($updateFields) {
-            $updateFields[] = "updated_at = CURRENT_TIMESTAMP";
-            $params[] = $id;
-            
-            $sql = "UPDATE categories SET " . implode(', ', $updateFields) . " WHERE id = ?";
-            $stmt = $this->db->prepare($sql);
-            $stmt->execute($params);
+        if (empty($updateFields)) {
+            $response->getBody()->write(json_encode(['error' => 'No valid fields to update']));
+            return $response->withStatus(400)->withHeader('Content-Type', 'application/json');
         }
+        
+        $updateFields[] = "updated_at = CURRENT_TIMESTAMP";
+        $params[] = $id;
+        
+        $sql = "UPDATE categories SET " . implode(', ', $updateFields) . " WHERE id = ?";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
         
         $response->getBody()->write(json_encode(['message' => 'Category updated successfully']));
         return $response->withHeader('Content-Type', 'application/json');
