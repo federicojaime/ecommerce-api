@@ -1,9 +1,28 @@
 RewriteEngine On
 RewriteBase /ecommerce-api/public/
 
+# Manejar Authorization Header
 RewriteCond %{HTTP:Authorization} .+
 RewriteRule ^ - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
 
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
+# Permitir acceso directo a archivos de uploads (imágenes, etc.)
+RewriteCond %{REQUEST_FILENAME} -f
+RewriteCond %{REQUEST_URI} ^/ecommerce-api/public/uploads/
+RewriteRule ^ - [L]
+
+# Permitir acceso a archivos estáticos existentes
+RewriteCond %{REQUEST_FILENAME} -f
+RewriteRule ^ - [L]
+
+# Permitir acceso a directorios existentes
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Redirigir todo lo demás al front controller
 RewriteRule ^ index.php [QSA,L]
+
+# Headers para imágenes
+<FilesMatch "\.(jpg|jpeg|png|gif|webp)$">
+    Header set Cache-Control "max-age=31536000, public"
+    Header set Access-Control-Allow-Origin "*"
+</FilesMatch>

@@ -41,8 +41,10 @@ return function ($app) {
             $adminGroup->get('', [ProductController::class, 'getAll']);
             $adminGroup->get('/{id}', [ProductController::class, 'getOne']);
             $adminGroup->post('', [ProductController::class, 'create']);
-            $adminGroup->put('/{id}', [ProductController::class, 'update']);
             $adminGroup->delete('/{id}', [ProductController::class, 'delete']);
+            
+            // Manejar tanto PUT como POST para updates
+            $adminGroup->map(['PUT', 'POST'], '/{id}', [ProductController::class, 'update']);
         });
         
         // Admin Categories

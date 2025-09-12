@@ -8,7 +8,17 @@ use Slim\Psr7\Response;
 
 class AuthMiddleware {
     public function __invoke(Request $request, RequestHandler $handler): Response {
+        // Obtener el header de autorización
         $authHeader = $request->getHeaderLine('Authorization');
+        
+        // También verificar en $_SERVER por si acaso
+        if (!$authHeader && isset($_SERVER['HTTP_AUTHORIZATION'])) {
+            $authHeader = $_SERVER['HTTP_AUTHORIZATION'];
+        }
+        
+        // Log para debugging
+        error_log("Auth Header: " . $authHeader);
+        error_log("All headers: " . print_r($request->getHeaders(), true));
         
         if (!$authHeader) {
             $response = new Response();
@@ -16,7 +26,12 @@ class AuthMiddleware {
             return $response->withStatus(401)->withHeader('Content-Type', 'application/json');
         }
 
+        // Extraer el token
         $token = str_replace('Bearer ', '', $authHeader);
+        
+        // Log del token
+        error_log("Token extracted: " . substr($token, 0, 50) . "...");
+        
         $decoded = JWT::decode($token);
 
         if (!$decoded) {

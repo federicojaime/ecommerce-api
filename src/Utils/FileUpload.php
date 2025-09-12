@@ -7,9 +7,17 @@ class FileUpload {
     private $uploadPath;
     private $allowedTypes;
     private $maxSize;
+    private $baseUrl;
 
-    public function __construct($uploadPath = 'public/uploads/') {
-        $this->uploadPath = rtrim($uploadPath, '/') . '/';
+    public function __construct($uploadPath = null) {
+        // Obtener la ruta base del proyecto
+        $projectRoot = dirname(dirname(__DIR__));
+        $this->uploadPath = $uploadPath ?? $projectRoot . '/public/uploads/';
+        $this->uploadPath = rtrim($this->uploadPath, '/') . '/';
+        
+        // URL base para acceder a las imágenes
+        $this->baseUrl = '/ecommerce-api/public/uploads/';
+        
         $this->allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
         $this->maxSize = 10 * 1024 * 1024; // 10MB
         
@@ -53,9 +61,9 @@ class FileUpload {
         $filename = $this->generateUniqueFilename($extension);
         
         // Crear directorio de destino
-        $targetDir = $this->uploadPath . $subfolder;
+        $targetDir = $this->uploadPath;
         if (!empty($subfolder)) {
-            $targetDir = rtrim($targetDir, '/') . '/';
+            $targetDir .= rtrim($subfolder, '/') . '/';
             if (!is_dir($targetDir)) {
                 mkdir($targetDir, 0755, true);
             }
@@ -63,12 +71,31 @@ class FileUpload {
 
         $targetPath = $targetDir . $filename;
         
+        // Log para debug
+        error_log("Uploading file to: " . $targetPath);
+        error_log("Target dir exists: " . (is_dir($targetDir) ? 'YES' : 'NO'));
+        error_log("Target dir writable: " . (is_writable($targetDir) ? 'YES' : 'NO'));
+        
         // Mover archivo
         $uploadedFile->moveTo($targetPath);
         
-        // Retornar ruta relativa
+        // Verificar que se subió correctamente
+        if (!file_exists($targetPath)) {
+            throw new \Exception('Failed to save uploaded file');
+        }
+        
+        // Retornar ruta relativa para la base de datos
         $relativePath = $subfolder ? $subfolder . '/' . $filename : $filename;
+        error_log("File uploaded successfully. Relative path: " . $relativePath);
+        
         return ltrim($relativePath, '/');
+    }
+
+    /**
+     * Obtener URL completa de una imagen
+     */
+    public function getImageUrl($relativePath): string {
+        return $this->baseUrl . ltrim($relativePath, '/');
     }
 
     /**
@@ -175,5 +202,12 @@ class FileUpload {
 
         $imageInfo = getimagesize($fullPath);
         return $imageInfo !== false;
+    }
+
+    /**
+     * Obtener ruta completa del archivo
+     */
+    public function getFullPath($relativePath): string {
+        return $this->uploadPath . ltrim($relativePath, '/');
     }
 }

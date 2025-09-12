@@ -85,14 +85,14 @@ $app->get('/', function (Request $request, Response $response) {
             ]
         ]
     ];
-    
+
     $response->getBody()->write(json_encode($data, JSON_PRETTY_PRINT));
     return $response->withHeader('Content-Type', 'application/json');
 });
 
 // Rutas públicas (sin autenticación)
 $app->group('/api', function (RouteCollectorProxy $group) use ($database) {
-    
+
     // Autenticación
     $group->post('/auth/login', function (Request $request, Response $response) use ($database) {
         try {
@@ -103,7 +103,7 @@ $app->group('/api', function (RouteCollectorProxy $group) use ($database) {
             return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
         }
     });
-    
+
     $group->post('/auth/register', function (Request $request, Response $response) use ($database) {
         try {
             $controller = new AuthController($database);
@@ -113,7 +113,7 @@ $app->group('/api', function (RouteCollectorProxy $group) use ($database) {
             return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
         }
     });
-    
+
     // Productos públicos
     $group->get('/products', function (Request $request, Response $response) use ($database) {
         try {
@@ -124,7 +124,7 @@ $app->group('/api', function (RouteCollectorProxy $group) use ($database) {
             return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
         }
     });
-    
+
     $group->get('/products/{id}', function (Request $request, Response $response, array $args) use ($database) {
         try {
             $controller = new ProductController($database);
@@ -134,7 +134,7 @@ $app->group('/api', function (RouteCollectorProxy $group) use ($database) {
             return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
         }
     });
-    
+
     // Categorías públicas
     $group->get('/categories', function (Request $request, Response $response) use ($database) {
         try {
@@ -145,7 +145,7 @@ $app->group('/api', function (RouteCollectorProxy $group) use ($database) {
             return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
         }
     });
-    
+
     $group->get('/categories/{id}', function (Request $request, Response $response, array $args) use ($database) {
         try {
             $controller = new CategoryController($database);
@@ -155,136 +155,140 @@ $app->group('/api', function (RouteCollectorProxy $group) use ($database) {
             return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
         }
     });
-    
 });
 
 // Rutas protegidas (requieren autenticación)
 $app->group('/api', function (RouteCollectorProxy $group) use ($database) {
-    
+
     // Perfil de usuario
     $group->get('/auth/me', function (Request $request, Response $response) use ($database) {
         $controller = new AuthController($database);
         return $controller->me($request, $response);
     });
-    
+
     // Dashboard
     $group->get('/dashboard/stats', function (Request $request, Response $response) use ($database) {
         $controller = new DashboardController($database);
         return $controller->getStats($request, $response);
     });
-    
+
     // Admin Products
     $group->group('/admin/products', function (RouteCollectorProxy $adminGroup) use ($database) {
         $adminGroup->get('', function (Request $request, Response $response) use ($database) {
             $controller = new ProductController($database);
             return $controller->getAll($request, $response);
         });
-        
+
         $adminGroup->get('/{id}', function (Request $request, Response $response, array $args) use ($database) {
             $controller = new ProductController($database);
             return $controller->getOne($request, $response, $args);
         });
-        
+
         $adminGroup->post('', function (Request $request, Response $response) use ($database) {
             $controller = new ProductController($database);
             return $controller->create($request, $response);
         });
-        
+
         $adminGroup->put('/{id}', function (Request $request, Response $response, array $args) use ($database) {
             $controller = new ProductController($database);
             return $controller->update($request, $response, $args);
         });
-        
+
+        // NUEVA RUTA: POST para updates con archivos
+        $adminGroup->post('/{id}', function (Request $request, Response $response, array $args) use ($database) {
+            $controller = new ProductController($database);
+            return $controller->update($request, $response, $args);
+        });
+
         $adminGroup->delete('/{id}', function (Request $request, Response $response, array $args) use ($database) {
             $controller = new ProductController($database);
             return $controller->delete($request, $response, $args);
         });
     });
-    
+
     // Admin Categories
     $group->group('/admin/categories', function (RouteCollectorProxy $adminGroup) use ($database) {
         $adminGroup->get('', function (Request $request, Response $response) use ($database) {
             $controller = new CategoryController($database);
             return $controller->getAll($request, $response);
         });
-        
+
         $adminGroup->get('/{id}', function (Request $request, Response $response, array $args) use ($database) {
             $controller = new CategoryController($database);
             return $controller->getOne($request, $response, $args);
         });
-        
+
         $adminGroup->post('', function (Request $request, Response $response) use ($database) {
             $controller = new CategoryController($database);
             return $controller->create($request, $response);
         });
-        
+
         $adminGroup->put('/{id}', function (Request $request, Response $response, array $args) use ($database) {
             $controller = new CategoryController($database);
             return $controller->update($request, $response, $args);
         });
-        
+
         $adminGroup->delete('/{id}', function (Request $request, Response $response, array $args) use ($database) {
             $controller = new CategoryController($database);
             return $controller->delete($request, $response, $args);
         });
     });
-    
+
     // Admin Users
     $group->group('/admin/users', function (RouteCollectorProxy $adminGroup) use ($database) {
         $adminGroup->get('', function (Request $request, Response $response) use ($database) {
             $controller = new UserController($database);
             return $controller->getAll($request, $response);
         });
-        
+
         $adminGroup->get('/{id}', function (Request $request, Response $response, array $args) use ($database) {
             $controller = new UserController($database);
             return $controller->getOne($request, $response, $args);
         });
-        
+
         $adminGroup->post('', function (Request $request, Response $response) use ($database) {
             $controller = new UserController($database);
             return $controller->create($request, $response);
         });
-        
+
         $adminGroup->put('/{id}', function (Request $request, Response $response, array $args) use ($database) {
             $controller = new UserController($database);
             return $controller->update($request, $response, $args);
         });
-        
+
         $adminGroup->delete('/{id}', function (Request $request, Response $response, array $args) use ($database) {
             $controller = new UserController($database);
             return $controller->delete($request, $response, $args);
         });
     });
-    
+
     // Admin Orders
     $group->group('/admin/orders', function (RouteCollectorProxy $adminGroup) use ($database) {
         $adminGroup->get('', function (Request $request, Response $response) use ($database) {
             $controller = new OrderController($database);
             return $controller->getAll($request, $response);
         });
-        
+
         $adminGroup->get('/{id}', function (Request $request, Response $response, array $args) use ($database) {
             $controller = new OrderController($database);
             return $controller->getOne($request, $response, $args);
         });
-        
+
         $adminGroup->post('', function (Request $request, Response $response) use ($database) {
             $controller = new OrderController($database);
             return $controller->create($request, $response);
         });
-        
+
         $adminGroup->put('/{id}/status', function (Request $request, Response $response, array $args) use ($database) {
             $controller = new OrderController($database);
             return $controller->updateStatus($request, $response, $args);
         });
-        
+
         $adminGroup->delete('/{id}', function (Request $request, Response $response, array $args) use ($database) {
             $controller = new OrderController($database);
             return $controller->delete($request, $response, $args);
         });
     });
-    
 })->add(new AuthMiddleware());
 
 // Ejecutar la aplicación
