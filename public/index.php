@@ -398,5 +398,10 @@ $app->group('/api', function (RouteCollectorProxy $group) use ($database) {
     });
 })->add(new AuthMiddleware());
 
+// Debug de variables de entorno
+error_log("DB_HOST: " . ($_ENV['DB_HOST'] ?? 'NOT SET'));
+error_log("DB_NAME: " . ($_ENV['DB_NAME'] ?? 'NOT SET'));
+error_log("DB_USER: " . ($_ENV['DB_USER'] ?? 'NOT SET'));
+error_log("DB_PASS: " . (isset($_ENV['DB_PASS']) ? 'SET' : 'NOT SET'));
 // Ejecutar la aplicación
 $app->run();

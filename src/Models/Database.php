@@ -1,5 +1,4 @@
 <?php
-
 namespace App\Models;
 
 use PDO;
@@ -25,15 +24,28 @@ class Database
 
     public function getConnection()
     {
-        $this->conn = null;
+        if ($this->conn !== null) {
+            return $this->conn;
+        }
+
         try {
             $dsn = "mysql:host=" . $this->host . ";port=" . $this->port . ";dbname=" . $this->db_name . ";charset=utf8mb4";
             $this->conn = new PDO($dsn, $this->username, $this->password);
             $this->conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             $this->conn->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+            
+            // Log de conexión exitosa
+            error_log("Database connected successfully to: " . $this->host . "/" . $this->db_name);
+            
         } catch (PDOException $exception) {
-            echo "Connection error: " . $exception->getMessage();
+            // Log más detallado del error
+            error_log("Database connection failed: " . $exception->getMessage());
+            error_log("Host: " . $this->host . ", DB: " . $this->db_name . ", User: " . $this->username);
+            
+            // Lanzar excepción en lugar de solo imprimir
+            throw new \Exception("Database connection failed: " . $exception->getMessage());
         }
+        
         return $this->conn;
     }
 }
