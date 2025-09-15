@@ -1,7 +1,7 @@
-DB_HOST=srv1597.hstgr.io
-DB_NAME=u565673608_sinrival
-DB_USER=u565673608_sinrival
-DB_PASS="!7saQcqm2cO"
+DB_HOST=localhost
+DB_NAME=ecommerce_db
+DB_USER=root
+DB_PASS=
 DB_PORT=3306
 
 JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
