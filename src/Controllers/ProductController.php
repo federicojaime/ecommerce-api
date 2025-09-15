@@ -175,8 +175,8 @@ class ProductController
             return $response->withStatus(404)->withHeader('Content-Type', 'application/json');
         }
 
-        // Obtener imágenes
-        $imgStmt = $this->db->prepare("SELECT * FROM product_images WHERE product_id = ? ORDER BY sort_order, id");
+        // Obtener imágenes ordenadas
+        $imgStmt = $this->db->prepare("SELECT * FROM product_images WHERE product_id = ? ORDER BY sort_order ASC, id ASC");
         $imgStmt->execute([$id]);
         $product['images'] = $imgStmt->fetchAll();
 
@@ -609,6 +609,209 @@ class ProductController
             error_log("Product deletion error: " . $e->getMessage());
             $response->getBody()->write(json_encode(['error' => 'Failed to delete product']));
             return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+        }
+    }
+
+    /**
+     * ========== MÉTODOS PARA GESTIÓN DE IMÁGENES ==========
+     */
+
+    /**
+     * Eliminar imagen específica
+     * DELETE /api/admin/products/{product_id}/images/{image_id}
+     */
+    public function deleteImage(Request $request, Response $response, array $args): Response
+    {
+        $productId = $args['product_id'];
+        $imageId = $args['image_id'];
+
+        try {
+            $this->db->beginTransaction();
+
+            // Verificar que el producto existe
+            $productStmt = $this->db->prepare("SELECT id FROM products WHERE id = ?");
+            $productStmt->execute([$productId]);
+            if (!$productStmt->fetch()) {
+                $response->getBody()->write(json_encode(['error' => 'Product not found']));
+                return $response->withStatus(404)->withHeader('Content-Type', 'application/json');
+            }
+
+            // Obtener información de la imagen
+            $imgStmt = $this->db->prepare("SELECT * FROM product_images WHERE id = ? AND product_id = ?");
+            $imgStmt->execute([$imageId, $productId]);
+            $image = $imgStmt->fetch();
+
+            if (!$image) {
+                $response->getBody()->write(json_encode(['error' => 'Image not found']));
+                return $response->withStatus(404)->withHeader('Content-Type', 'application/json');
+            }
+
+            // Verificar que no sea la única imagen
+            $countStmt = $this->db->prepare("SELECT COUNT(*) as count FROM product_images WHERE product_id = ?");
+            $countStmt->execute([$productId]);
+            $imageCount = $countStmt->fetch()['count'];
+
+            if ($imageCount <= 1) {
+                $response->getBody()->write(json_encode(['error' => 'Cannot delete the last image']));
+                return $response->withStatus(400)->withHeader('Content-Type', 'application/json');
+            }
+
+            $wasPrimary = (bool)$image['is_primary'];
+
+            // Eliminar archivo físico
+            $this->fileUpload->deleteFile($image['image_path']);
+
+            // Eliminar de la base de datos
+            $deleteStmt = $this->db->prepare("DELETE FROM product_images WHERE id = ?");
+            $deleteStmt->execute([$imageId]);
+
+            // Si era primaria, hacer primaria a la siguiente
+            if ($wasPrimary) {
+                $nextStmt = $this->db->prepare(
+                    "UPDATE product_images SET is_primary = 1 
+                     WHERE product_id = ? 
+                     ORDER BY sort_order ASC, id ASC 
+                     LIMIT 1"
+                );
+                $nextStmt->execute([$productId]);
+                error_log("Made next image primary for product: " . $productId);
+            }
+
+            // Reordenar las imágenes restantes
+            $this->reorderImagesHelper($productId);
+
+            $this->db->commit();
+
+            $response->getBody()->write(json_encode(['message' => 'Image deleted successfully']));
+            return $response->withHeader('Content-Type', 'application/json');
+
+        } catch (\Exception $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollback();
+            }
+            error_log("Delete image error: " . $e->getMessage());
+            $response->getBody()->write(json_encode(['error' => 'Failed to delete image']));
+            return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+        }
+    }
+
+    /**
+     * Reordenar imágenes
+     * PUT /api/admin/products/{product_id}/images/reorder
+     */
+    public function reorderImages(Request $request, Response $response, array $args): Response
+    {
+        $productId = $args['product_id'];
+        $data = $this->getRequestData($request);
+
+        // Verificar que el producto existe
+        $productStmt = $this->db->prepare("SELECT id FROM products WHERE id = ?");
+        $productStmt->execute([$productId]);
+        if (!$productStmt->fetch()) {
+            $response->getBody()->write(json_encode(['error' => 'Product not found']));
+            return $response->withStatus(404)->withHeader('Content-Type', 'application/json');
+        }
+
+        if (!isset($data['image_ids']) || !is_array($data['image_ids'])) {
+            $response->getBody()->write(json_encode(['error' => 'image_ids array is required']));
+            return $response->withStatus(400)->withHeader('Content-Type', 'application/json');
+        }
+
+        try {
+            $this->db->beginTransaction();
+
+            // Actualizar el order de cada imagen
+            foreach ($data['image_ids'] as $order => $imageId) {
+                $updateStmt = $this->db->prepare(
+                    "UPDATE product_images SET sort_order = ? WHERE id = ? AND product_id = ?"
+                );
+                $updateStmt->execute([$order, $imageId, $productId]);
+            }
+
+            $this->db->commit();
+
+            $response->getBody()->write(json_encode(['message' => 'Images reordered successfully']));
+            return $response->withHeader('Content-Type', 'application/json');
+
+        } catch (\Exception $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollback();
+            }
+            error_log("Reorder images error: " . $e->getMessage());
+            $response->getBody()->write(json_encode(['error' => 'Failed to reorder images']));
+            return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+        }
+    }
+
+    /**
+     * Establecer imagen primaria
+     * PUT /api/admin/products/{product_id}/images/{image_id}/primary
+     */
+    public function setPrimaryImage(Request $request, Response $response, array $args): Response
+    {
+        $productId = $args['product_id'];
+        $imageId = $args['image_id'];
+
+        try {
+            $this->db->beginTransaction();
+
+            // Verificar que el producto existe
+            $productStmt = $this->db->prepare("SELECT id FROM products WHERE id = ?");
+            $productStmt->execute([$productId]);
+            if (!$productStmt->fetch()) {
+                $response->getBody()->write(json_encode(['error' => 'Product not found']));
+                return $response->withStatus(404)->withHeader('Content-Type', 'application/json');
+            }
+
+            // Verificar que la imagen existe
+            $imgStmt = $this->db->prepare("SELECT id FROM product_images WHERE id = ? AND product_id = ?");
+            $imgStmt->execute([$imageId, $productId]);
+            if (!$imgStmt->fetch()) {
+                $response->getBody()->write(json_encode(['error' => 'Image not found']));
+                return $response->withStatus(404)->withHeader('Content-Type', 'application/json');
+            }
+
+            // Quitar primary de todas las imágenes del producto
+            $updateAllStmt = $this->db->prepare("UPDATE product_images SET is_primary = 0 WHERE product_id = ?");
+            $updateAllStmt->execute([$productId]);
+
+            // Establecer la nueva imagen como primaria
+            $setPrimaryStmt = $this->db->prepare("UPDATE product_images SET is_primary = 1 WHERE id = ?");
+            $setPrimaryStmt->execute([$imageId]);
+
+            $this->db->commit();
+
+            $response->getBody()->write(json_encode(['message' => 'Primary image updated successfully']));
+            return $response->withHeader('Content-Type', 'application/json');
+
+        } catch (\Exception $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollback();
+            }
+            error_log("Set primary image error: " . $e->getMessage());
+            $response->getBody()->write(json_encode(['error' => 'Failed to set primary image']));
+            return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+        }
+    }
+
+    /**
+     * ========== MÉTODOS HELPER ==========
+     */
+
+    /**
+     * Método helper para reordenar imágenes automáticamente
+     */
+    private function reorderImagesHelper($productId): void
+    {
+        // Obtener todas las imágenes ordenadas
+        $stmt = $this->db->prepare("SELECT id FROM product_images WHERE product_id = ? ORDER BY sort_order ASC, id ASC");
+        $stmt->execute([$productId]);
+        $images = $stmt->fetchAll();
+
+        // Reordenar con números consecutivos
+        foreach ($images as $index => $image) {
+            $updateStmt = $this->db->prepare("UPDATE product_images SET sort_order = ? WHERE id = ?");
+            $updateStmt->execute([$index, $image['id']]);
         }
     }
 

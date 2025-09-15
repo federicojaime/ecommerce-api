@@ -204,6 +204,26 @@ $app->group('/api', function (RouteCollectorProxy $group) use ($database) {
             $controller = new ProductController($database);
             return $controller->delete($request, $response, $args);
         });
+
+        // ========== NUEVAS RUTAS PARA GESTIÓN DE IMÁGENES ==========
+        
+        // Eliminar imagen específica
+        $adminGroup->delete('/{product_id}/images/{image_id}', function (Request $request, Response $response, array $args) use ($database) {
+            $controller = new ProductController($database);
+            return $controller->deleteImage($request, $response, $args);
+        });
+
+        // Reordenar imágenes
+        $adminGroup->put('/{product_id}/images/reorder', function (Request $request, Response $response, array $args) use ($database) {
+            $controller = new ProductController($database);
+            return $controller->reorderImages($request, $response, $args);
+        });
+
+        // Establecer imagen primaria
+        $adminGroup->put('/{product_id}/images/{image_id}/primary', function (Request $request, Response $response, array $args) use ($database) {
+            $controller = new ProductController($database);
+            return $controller->setPrimaryImage($request, $response, $args);
+        });
     });
 
     // Admin Categories
