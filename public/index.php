@@ -10,6 +10,7 @@ use App\Controllers\CategoryController;
 use App\Controllers\UserController;
 use App\Controllers\OrderController;
 use App\Controllers\DashboardController;
+use App\Controllers\SettingsController;
 use App\Middleware\AuthMiddleware;
 use Slim\Routing\RouteCollectorProxy;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -73,15 +74,31 @@ $app->get('/', function (Request $request, Response $response) {
             'auth' => [
                 'POST /api/auth/login',
                 'POST /api/auth/register',
-                'GET /api/auth/me'
+                'GET /api/auth/me',
+                'PUT /api/auth/change-password',
+                'PUT /api/auth/profile'
             ],
             'products' => [
                 'GET /api/products',
-                'GET /api/products/{id}'
+                'GET /api/products/{id}',
+                'POST /api/admin/products',
+                'PUT /api/admin/products/{id}'
             ],
             'categories' => [
                 'GET /api/categories',
-                'GET /api/categories/{id}'
+                'GET /api/categories/{id}',
+                'POST /api/admin/categories',
+                'PUT /api/admin/categories/{id}'
+            ],
+            'settings' => [
+                'GET /api/admin/settings',
+                'PUT /api/admin/settings',
+                'POST /api/admin/settings/validate',
+                'GET /api/admin/settings/stats',
+                'POST /api/admin/settings/logo',
+                'GET /api/admin/settings/export',
+                'POST /api/admin/settings/import',
+                'POST /api/admin/settings/test-payment'
             ]
         ]
     ];
@@ -160,19 +177,89 @@ $app->group('/api', function (RouteCollectorProxy $group) use ($database) {
 // Rutas protegidas (requieren autenticación)
 $app->group('/api', function (RouteCollectorProxy $group) use ($database) {
 
-    // Perfil de usuario
+    // ========== AUTENTICACIÓN Y PERFIL ==========
     $group->get('/auth/me', function (Request $request, Response $response) use ($database) {
         $controller = new AuthController($database);
         return $controller->me($request, $response);
     });
 
-    // Dashboard
+    $group->put('/auth/change-password', function (Request $request, Response $response) use ($database) {
+        $controller = new AuthController($database);
+        return $controller->changePassword($request, $response);
+    });
+
+    $group->put('/auth/profile', function (Request $request, Response $response) use ($database) {
+        $controller = new AuthController($database);
+        return $controller->updateProfile($request, $response);
+    });
+
+    $group->post('/auth/logout', function (Request $request, Response $response) use ($database) {
+        $controller = new AuthController($database);
+        return $controller->logout($request, $response);
+    });
+
+    $group->get('/auth/validate-token', function (Request $request, Response $response) use ($database) {
+        $controller = new AuthController($database);
+        return $controller->validateToken($request, $response);
+    });
+
+    // ========== DASHBOARD ==========
     $group->get('/dashboard/stats', function (Request $request, Response $response) use ($database) {
         $controller = new DashboardController($database);
         return $controller->getStats($request, $response);
     });
 
-    // Admin Products
+    // ========== CONFIGURACIONES (SETTINGS) ==========
+    $group->group('/admin/settings', function (RouteCollectorProxy $settingsGroup) use ($database) {
+        
+        // Configuraciones básicas
+        $settingsGroup->get('', function (Request $request, Response $response) use ($database) {
+            $controller = new SettingsController($database);
+            return $controller->getSettings($request, $response);
+        });
+
+        $settingsGroup->put('', function (Request $request, Response $response) use ($database) {
+            $controller = new SettingsController($database);
+            return $controller->updateSettings($request, $response);
+        });
+
+        // Validación
+        $settingsGroup->post('/validate', function (Request $request, Response $response) use ($database) {
+            $controller = new SettingsController($database);
+            return $controller->validateSettings($request, $response);
+        });
+
+        // Estadísticas
+        $settingsGroup->get('/stats', function (Request $request, Response $response) use ($database) {
+            $controller = new SettingsController($database);
+            return $controller->getStats($request, $response);
+        });
+
+        // Gestión de archivos
+        $settingsGroup->post('/logo', function (Request $request, Response $response) use ($database) {
+            $controller = new SettingsController($database);
+            return $controller->uploadLogo($request, $response);
+        });
+
+        // Exportar/Importar
+        $settingsGroup->get('/export', function (Request $request, Response $response) use ($database) {
+            $controller = new SettingsController($database);
+            return $controller->exportSettings($request, $response);
+        });
+
+        $settingsGroup->post('/import', function (Request $request, Response $response) use ($database) {
+            $controller = new SettingsController($database);
+            return $controller->importSettings($request, $response);
+        });
+
+        // Testing de métodos de pago
+        $settingsGroup->post('/test-payment', function (Request $request, Response $response) use ($database) {
+            $controller = new SettingsController($database);
+            return $controller->testPaymentConnection($request, $response);
+        });
+    });
+
+    // ========== ADMIN PRODUCTS ==========
     $group->group('/admin/products', function (RouteCollectorProxy $adminGroup) use ($database) {
         $adminGroup->get('', function (Request $request, Response $response) use ($database) {
             $controller = new ProductController($database);
@@ -205,7 +292,7 @@ $app->group('/api', function (RouteCollectorProxy $group) use ($database) {
             return $controller->delete($request, $response, $args);
         });
 
-        // ========== NUEVAS RUTAS PARA GESTIÓN DE IMÁGENES ==========
+        // ========== GESTIÓN DE IMÁGENES ==========
         
         // Eliminar imagen específica
         $adminGroup->delete('/{product_id}/images/{image_id}', function (Request $request, Response $response, array $args) use ($database) {
@@ -226,7 +313,7 @@ $app->group('/api', function (RouteCollectorProxy $group) use ($database) {
         });
     });
 
-    // Admin Categories
+    // ========== ADMIN CATEGORIES ==========
     $group->group('/admin/categories', function (RouteCollectorProxy $adminGroup) use ($database) {
         $adminGroup->get('', function (Request $request, Response $response) use ($database) {
             $controller = new CategoryController($database);
@@ -254,7 +341,7 @@ $app->group('/api', function (RouteCollectorProxy $group) use ($database) {
         });
     });
 
-    // Admin Users
+    // ========== ADMIN USERS ==========
     $group->group('/admin/users', function (RouteCollectorProxy $adminGroup) use ($database) {
         $adminGroup->get('', function (Request $request, Response $response) use ($database) {
             $controller = new UserController($database);
@@ -282,7 +369,7 @@ $app->group('/api', function (RouteCollectorProxy $group) use ($database) {
         });
     });
 
-    // Admin Orders
+    // ========== ADMIN ORDERS ==========
     $group->group('/admin/orders', function (RouteCollectorProxy $adminGroup) use ($database) {
         $adminGroup->get('', function (Request $request, Response $response) use ($database) {
             $controller = new OrderController($database);

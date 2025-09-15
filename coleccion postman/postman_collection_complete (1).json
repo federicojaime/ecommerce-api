@@ -1,0 +1,1144 @@
+{
+  "info": {
+    "name": "E-commerce API - Complete Collection",
+    "description": "Colección completa de la API de E-commerce con sistema de configuraciones implementado",
+    "version": "2.0.0",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost/ecommerce-api/public/api",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "🔐 Authentication",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.token) {",
+                  "        pm.collectionVariables.set('token', response.token);",
+                  "        console.log('Token saved:', response.token);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@ecommerce.com\",\n  \"password\": \"password\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Iniciar sesión en el sistema"
+          }
+        },
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Nuevo Usuario\",\n  \"email\": \"nuevo@ejemplo.com\",\n  \"password\": \"password123\",\n  \"role\": \"customer\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "register"]
+            },
+            "description": "Registrar nuevo usuario"
+          }
+        },
+        {
+          "name": "Get User Profile",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/auth/me",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "me"]
+            },
+            "description": "Obtener información del usuario autenticado"
+          }
+        },
+        {
+          "name": "🆕 Change Password",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current_password\": \"password\",\n  \"new_password\": \"newpassword123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/change-password",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "change-password"]
+            },
+            "description": "Cambiar contraseña del usuario"
+          }
+        },
+        {
+          "name": "🆕 Update Profile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Nombre Actualizado\",\n  \"email\": \"nuevo@email.com\",\n  \"phone\": \"+1234567890\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/profile",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "profile"]
+            },
+            "description": "Actualizar perfil del usuario"
+          }
+        },
+        {
+          "name": "🆕 Logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/auth/logout",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "logout"]
+            },
+            "description": "Cerrar sesión"
+          }
+        },
+        {
+          "name": "🆕 Validate Token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/auth/validate-token",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "validate-token"]
+            },
+            "description": "Validar si el token sigue siendo válido"
+          }
+        }
+      ]
+    },
+    {
+      "name": "⚙️ Settings (Configuraciones)",
+      "item": [
+        {
+          "name": "🆕 Get All Settings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/settings",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "settings"]
+            },
+            "description": "Obtener todas las configuraciones del sistema"
+          }
+        },
+        {
+          "name": "🆕 Get Settings by Category",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/settings?category=store",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "settings"],
+              "query": [
+                {
+                  "key": "category",
+                  "value": "store",
+                  "description": "Filtrar por categoría: store, style, notifications, security, payment, shipping"
+                }
+              ]
+            },
+            "description": "Obtener configuraciones de una categoría específica"
+          }
+        },
+        {
+          "name": "🆕 Update Settings",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"store\": {\n    \"basic_info\": {\n      \"name\": \"Mi Tienda Actualizada\",\n      \"description\": \"Nueva descripción de la tienda\",\n      \"email\": \"contacto@nuevoemail.com\",\n      \"phone\": \"+1234567890\",\n      \"address\": \"Nueva Dirección 456\",\n      \"country\": \"Argentina\",\n      \"currency\": \"ARS\",\n      \"timezone\": \"America/Argentina/Buenos_Aires\"\n    }\n  },\n  \"style\": {\n    \"theme\": {\n      \"primary_color\": \"#28a745\",\n      \"secondary_color\": \"#6c757d\",\n      \"font_family\": \"Roboto, sans-serif\"\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/settings",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "settings"]
+            },
+            "description": "Actualizar configuraciones del sistema"
+          }
+        },
+        {
+          "name": "🆕 Validate Settings",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"store\": {\n    \"basic_info\": {\n      \"name\": \"Test Store\",\n      \"email\": \"test@store.com\"\n    }\n  },\n  \"security\": {\n    \"authentication\": {\n      \"password_min_length\": 8,\n      \"session_timeout\": 3600\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/settings/validate",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "settings", "validate"]
+            },
+            "description": "Validar configuraciones sin guardarlas"
+          }
+        },
+        {
+          "name": "🆕 Get Settings Stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/settings/stats",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "settings", "stats"]
+            },
+            "description": "Obtener estadísticas del sistema de configuraciones"
+          }
+        },
+        {
+          "name": "🆕 Upload Logo",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "logo",
+                  "type": "file",
+                  "src": [],
+                  "description": "Archivo de imagen para el logo (máx 5MB)"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/settings/logo",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "settings", "logo"]
+            },
+            "description": "Subir logo de la tienda"
+          }
+        },
+        {
+          "name": "🆕 Export Settings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/settings/export",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "settings", "export"]
+            },
+            "description": "Exportar todas las configuraciones como archivo JSON"
+          }
+        },
+        {
+          "name": "🆕 Import Settings",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "settings_file",
+                  "type": "file",
+                  "src": [],
+                  "description": "Archivo JSON con configuraciones a importar"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/settings/import",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "settings", "import"]
+            },
+            "description": "Importar configuraciones desde archivo JSON"
+          }
+        },
+        {
+          "name": "🆕 Test Payment Connection - MercadoPago",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"mercadoPago\",\n  \"credentials\": {\n    \"public_key\": \"TEST-public-key\",\n    \"access_token\": \"TEST-access-token\",\n    \"sandbox_mode\": true\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/settings/test-payment",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "settings", "test-payment"]
+            },
+            "description": "Probar conexión con MercadoPago"
+          }
+        },
+        {
+          "name": "🆕 Test Payment Connection - Stripe",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"stripe\",\n  \"credentials\": {\n    \"public_key\": \"pk_test_example\",\n    \"secret_key\": \"sk_test_example\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/settings/test-payment",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "settings", "test-payment"]
+            },
+            "description": "Probar conexión con Stripe"
+          }
+        },
+        {
+          "name": "🆕 Test Payment Connection - PayPal",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"paypal\",\n  \"credentials\": {\n    \"client_id\": \"paypal-client-id\",\n    \"client_secret\": \"paypal-client-secret\",\n    \"sandbox_mode\": true\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/settings/test-payment",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "settings", "test-payment"]
+            },
+            "description": "Probar conexión con PayPal"
+          }
+        }
+      ]
+    },
+    {
+      "name": "📊 Dashboard",
+      "item": [
+        {
+          "name": "Get Dashboard Stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/dashboard/stats",
+              "host": ["{{base_url}}"],
+              "path": ["dashboard", "stats"]
+            },
+            "description": "Obtener estadísticas del dashboard"
+          }
+        }
+      ]
+    },
+    {
+      "name": "🛍️ Products",
+      "item": [
+        {
+          "name": "📋 Public Products",
+          "item": [
+            {
+              "name": "Get All Products (Public)",
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/products?page=1&limit=10&search=&category=&status=active",
+                  "host": ["{{base_url}}"],
+                  "path": ["products"],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "10"
+                    },
+                    {
+                      "key": "search",
+                      "value": ""
+                    },
+                    {
+                      "key": "category",
+                      "value": ""
+                    },
+                    {
+                      "key": "status",
+                      "value": "active"
+                    }
+                  ]
+                },
+                "description": "Obtener productos públicos"
+              }
+            },
+            {
+              "name": "Get Product by ID (Public)",
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/products/1",
+                  "host": ["{{base_url}}"],
+                  "path": ["products", "1"]
+                },
+                "description": "Obtener producto específico (público)"
+              }
+            }
+          ]
+        },
+        {
+          "name": "🔐 Admin Products",
+          "item": [
+            {
+              "name": "Get All Products (Admin)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/admin/products?page=1&limit=10&search=&category=&status=",
+                  "host": ["{{base_url}}"],
+                  "path": ["admin", "products"],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "10"
+                    },
+                    {
+                      "key": "search",
+                      "value": ""
+                    },
+                    {
+                      "key": "category",
+                      "value": ""
+                    },
+                    {
+                      "key": "status",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Obtener todos los productos (admin)"
+              }
+            },
+            {
+              "name": "Get Product by ID (Admin)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/admin/products/1",
+                  "host": ["{{base_url}}"],
+                  "path": ["admin", "products", "1"]
+                },
+                "description": "Obtener producto específico (admin)"
+              }
+            },
+            {
+              "name": "Create Product",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Producto de Ejemplo\",\n  \"description\": \"Descripción detallada del producto\",\n  \"short_description\": \"Descripción corta\",\n  \"sku\": \"PROD-001\",\n  \"price\": 999.99,\n  \"sale_price\": 899.99,\n  \"stock\": 100,\n  \"min_stock\": 10,\n  \"status\": \"active\",\n  \"featured\": true,\n  \"weight\": 1.5,\n  \"dimensions\": \"20x15x10 cm\",\n  \"category_id\": 1\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/admin/products",
+                  "host": ["{{base_url}}"],
+                  "path": ["admin", "products"]
+                },
+                "description": "Crear nuevo producto"
+              }
+            },
+            {
+              "name": "Create Product with Image",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "name",
+                      "value": "Producto con Imagen",
+                      "type": "text"
+                    },
+                    {
+                      "key": "description",
+                      "value": "Producto con imagen incluida",
+                      "type": "text"
+                    },
+                    {
+                      "key": "sku",
+                      "value": "PROD-IMG-001",
+                      "type": "text"
+                    },
+                    {
+                      "key": "price",
+                      "value": "1299.99",
+                      "type": "text"
+                    },
+                    {
+                      "key": "stock",
+                      "value": "50",
+                      "type": "text"
+                    },
+                    {
+                      "key": "category_id",
+                      "value": "1",
+                      "type": "text"
+                    },
+                    {
+                      "key": "image",
+                      "type": "file",
+                      "src": []
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}/admin/products",
+                  "host": ["{{base_url}}"],
+                  "path": ["admin", "products"]
+                },
+                "description": "Crear producto con imagen"
+              }
+            },
+            {
+              "name": "Update Product",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Producto Actualizado\",\n  \"description\": \"Descripción actualizada\",\n  \"price\": 1199.99,\n  \"stock\": 75,\n  \"status\": \"active\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/admin/products/1",
+                  "host": ["{{base_url}}"],
+                  "path": ["admin", "products", "1"]
+                },
+                "description": "Actualizar producto existente"
+              }
+            },
+            {
+              "name": "Update Product with New Images",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "name",
+                      "value": "Producto con Nuevas Imágenes",
+                      "type": "text"
+                    },
+                    {
+                      "key": "price",
+                      "value": "1499.99",
+                      "type": "text"
+                    },
+                    {
+                      "key": "image",
+                      "type": "file",
+                      "src": [],
+                      "description": "Imagen principal"
+                    },
+                    {
+                      "key": "images[]",
+                      "type": "file",
+                      "src": [],
+                      "description": "Imagen adicional 1"
+                    },
+                    {
+                      "key": "images[]",
+                      "type": "file",
+                      "src": [],
+                      "description": "Imagen adicional 2"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}/admin/products/1",
+                  "host": ["{{base_url}}"],
+                  "path": ["admin", "products", "1"]
+                },
+                "description": "Actualizar producto agregando nuevas imágenes"
+              }
+            },
+            {
+              "name": "Delete Product",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/admin/products/1",
+                  "host": ["{{base_url}}"],
+                  "path": ["admin", "products", "1"]
+                },
+                "description": "Eliminar producto"
+              }
+            }
+          ]
+        },
+        {
+          "name": "🖼️ Product Images Management",
+          "item": [
+            {
+              "name": "Delete Specific Image",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/admin/products/1/images/1",
+                  "host": ["{{base_url}}"],
+                  "path": ["admin", "products", "1", "images", "1"]
+                },
+                "description": "Eliminar imagen específica de un producto"
+              }
+            },
+            {
+              "name": "Reorder Product Images",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"image_ids\": [3, 1, 2]\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/admin/products/1/images/reorder",
+                  "host": ["{{base_url}}"],
+                  "path": ["admin", "products", "1", "images", "reorder"]
+                },
+                "description": "Reordenar imágenes de un producto"
+              }
+            },
+            {
+              "name": "Set Primary Image",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/admin/products/1/images/2/primary",
+                  "host": ["{{base_url}}"],
+                  "path": ["admin", "products", "1", "images", "2", "primary"]
+                },
+                "description": "Establecer imagen como primaria"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "📂 Categories",
+      "item": [
+        {
+          "name": "📋 Public Categories",
+          "item": [
+            {
+              "name": "Get All Categories (Public)",
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/categories",
+                  "host": ["{{base_url}}"],
+                  "path": ["categories"]
+                },
+                "description": "Obtener categorías públicas"
+              }
+            },
+            {
+              "name": "Get Category by ID (Public)",
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/categories/1",
+                  "host": ["{{base_url}}"],
+                  "path": ["categories", "1"]
+                },
+                "description": "Obtener categoría específica (público)"
+              }
+            }
+          ]
+        },
+        {
+          "name": "🔐 Admin Categories",
+          "item": [
+            {
+              "name": "Get All Categories (Admin)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/admin/categories",
+                  "host": ["{{base_url}}"],
+                  "path": ["admin", "categories"]
+                },
+                "description": "Obtener todas las categorías (admin)"
+              }
+            },
+            {
+              "name": "Get Category by ID (Admin)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/admin/categories/1",
+                  "host": ["{{base_url}}"],
+                  "path": ["admin", "categories", "1"]
+                },
+                "description": "Obtener categoría específica (admin)"
+              }
+            },
+            {
+              "name": "Create Category",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Nueva Categoría\",\n  \"description\": \"Descripción de la nueva categoría\",\n  \"parent_id\": null,\n  \"status\": \"active\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/admin/categories",
+                  "host": ["{{base_url}}"],
+                  "path": ["admin", "categories"]
+                },
+                "description": "Crear nueva categoría"
+              }
+            },
+            {
+              "name": "Update Category",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Categoría Actualizada\",\n  \"description\": \"Descripción actualizada\",\n  \"status\": \"active\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/admin/categories/1",
+                  "host": ["{{base_url}}"],
+                  "path": ["admin", "categories", "1"]
+                },
+                "description": "Actualizar categoría existente"
+              }
+            },
+            {
+              "name": "Delete Category",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/admin/categories/1",
+                  "host": ["{{base_url}}"],
+                  "path": ["admin", "categories", "1"]
+                },
+                "description": "Eliminar categoría"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "👥 Users",
+      "item": [
+        {
+          "name": "Get All Users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/users?page=1&limit=10&role=&status=&search=",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "users"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "role",
+                  "value": ""
+                },
+                {
+                  "key": "status",
+                  "value": ""
+                },
+                {
+                  "key": "search",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Obtener todos los usuarios"
+          }
+        },
+        {
+          "name": "Get User by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/users/1",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "users", "1"]
+            },
+            "description": "Obtener usuario específico"
+          }
+        },
+        {
+          "name": "Create User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Nuevo Usuario Admin\",\n  \"email\": \"admin2@ejemplo.com\",\n  \"password\": \"password123\",\n  \"role\": \"admin\",\n  \"status\": \"active\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/users",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "users"]
+            },
+            "description": "Crear nuevo usuario"
+          }
+        },
+        {
+          "name": "Update User",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Usuario Actualizado\",\n  \"email\": \"actualizado@ejemplo.com\",\n  \"role\": \"staff\",\n  \"status\": \"active\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/users/2",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "users", "2"]
+            },
+            "description": "Actualizar usuario existente"
+          }
+        },
+        {
+          "name": "Delete User",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/users/2",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "users", "2"]
+            },
+            "description": "Eliminar usuario"
+          }
+        }
+      ]
+    },
+    {
+      "name": "📦 Orders",
+      "item": [
+        {
+          "name": "Get All Orders",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/orders?page=1&limit=10&status=&search=",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "orders"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "status",
+                  "value": ""
+                },
+                {
+                  "key": "search",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Obtener todas las órdenes"
+          }
+        },
+        {
+          "name": "Get Order by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/orders/1",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "orders", "1"]
+            },
+            "description": "Obtener orden específica"
+          }
+        },
+        {
+          "name": "Create Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_name\": \"Juan Pérez\",\n  \"customer_email\": \"juan@ejemplo.com\",\n  \"customer_phone\": \"+1234567890\",\n  \"shipping_address\": \"Calle Falsa 123, Ciudad\",\n  \"billing_address\": \"Calle Falsa 123, Ciudad\",\n  \"payment_method\": \"credit_card\",\n  \"tax_amount\": 210,\n  \"shipping_amount\": 500,\n  \"notes\": \"Entregar en horario de oficina\",\n  \"items\": [\n    {\n      \"product_id\": 1,\n      \"quantity\": 2\n    },\n    {\n      \"product_id\": 2,\n      \"quantity\": 1\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/orders",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "orders"]
+            },
+            "description": "Crear nueva orden"
+          }
+        },
+        {
+          "name": "Update Order Status",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"processing\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/orders/1/status",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "orders", "1", "status"]
+            },
+            "description": "Actualizar estado de la orden"
+          }
+        },
+        {
+          "name": "Delete Order",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/orders/1",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "orders", "1"]
+            },
+            "description": "Eliminar orden"
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔍 API Info",
+      "item": [
+        {
+          "name": "API Root",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost/ecommerce-api/public/",
+              "protocol": "http",
+              "host": ["localhost"],
+              "path": ["ecommerce-api", "public", ""]
+            },
+            "description": "Información general de la API"
+          }
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Auto-add Authorization header if token exists",
+          "const token = pm.collectionVariables.get('token');",
+          "if (token && !pm.request.headers.has('Authorization')) {",
+          "    pm.request.headers.add({",
+          "        key: 'Authorization',",
+          "        value: `Bearer ${token}`",
+          "    });",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Log response for debugging",
+          "if (pm.response.code >= 400) {",
+          "    console.log('Error Response:', pm.response.text());",
+          "}"
+        ]
+      }
+    }
+  ]
+}
