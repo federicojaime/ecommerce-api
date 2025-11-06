@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "Read(//c/xampp5/apache/logs/**)",
+      "Bash(composer require:*)",
+      "Bash(openssl rand:*)",
+      "Bash(mysql:*)",
+      "Bash(curl:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

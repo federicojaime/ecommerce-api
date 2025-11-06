@@ -14,13 +14,13 @@ class FileUpload {
         $projectRoot = dirname(dirname(__DIR__));
         $this->uploadPath = $uploadPath ?? $projectRoot . '/public/uploads/';
         $this->uploadPath = rtrim($this->uploadPath, '/') . '/';
-        
+
         // URL base para acceder a las imágenes
         $this->baseUrl = '/ecommerce-api/public/uploads/';
-        
+
         $this->allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
         $this->maxSize = 10 * 1024 * 1024; // 10MB
-        
+
         // Crear directorio si no existe
         if (!is_dir($this->uploadPath)) {
             mkdir($this->uploadPath, 0755, true);

@@ -6,8 +6,7 @@ RewriteCond %{HTTP:Authorization} .+
 RewriteRule ^ - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
 
 # Permitir acceso directo a archivos de uploads (imágenes, etc.)
-RewriteCond %{REQUEST_FILENAME} -f
-RewriteCond %{REQUEST_URI} ^/ecommerce-api/public/uploads/
+RewriteCond %{REQUEST_URI} uploads/
 RewriteRule ^ - [L]
 
 # Permitir acceso a archivos estáticos existentes

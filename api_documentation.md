@@ -86,6 +86,261 @@
 
 ---
 
+### PUT `/api/auth/change-password`
+**Descripción:** Cambiar contraseña del usuario autenticado
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Request Body:**
+```json
+{
+  "current_password": "password123",
+  "new_password": "newpassword456"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "message": "Password changed successfully"
+}
+```
+
+**Errores:**
+- `400` Current password and new password are required
+- `401` Current password is incorrect
+
+---
+
+### PUT `/api/auth/profile`
+**Descripción:** Actualizar perfil del usuario autenticado
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Request Body:**
+```json
+{
+  "name": "Juan Pérez Actualizado",
+  "email": "juan.updated@example.com"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "message": "Profile updated successfully"
+}
+```
+
+**Errores:**
+- `400` Email already exists
+
+---
+
+### POST `/api/auth/logout`
+**Descripción:** Cerrar sesión (invalidar token)
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Response (200 OK):**
+```json
+{
+  "message": "Logged out successfully"
+}
+```
+
+---
+
+### GET `/api/auth/validate-token`
+**Descripción:** Validar si el token JWT es válido
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Response (200 OK):**
+```json
+{
+  "valid": true,
+  "user": {
+    "id": 1,
+    "name": "Admin",
+    "email": "admin@ecommerce.com",
+    "role": "admin"
+  }
+}
+```
+
+**Errores:**
+- `401` Invalid or expired token
+
+---
+
+## Configuraciones / Settings (Admin)
+
+**Autenticación requerida:** `Authorization: Bearer {token}`
+
+### GET `/api/admin/settings`
+**Descripción:** Obtener todas las configuraciones del sistema
+
+**Response (200 OK):**
+```json
+{
+  "site_name": "Mi E-commerce",
+  "site_description": "Tienda online de productos",
+  "site_logo": "uploads/logo.png",
+  "contact_email": "info@ecommerce.com",
+  "contact_phone": "+123456789",
+  "currency": "USD",
+  "tax_rate": "16.00",
+  "shipping_cost": "50.00",
+  "payment_methods": {
+    "stripe": {
+      "enabled": true,
+      "public_key": "pk_test_...",
+      "secret_key": "sk_test_..."
+    },
+    "paypal": {
+      "enabled": false
+    }
+  }
+}
+```
+
+---
+
+### PUT `/api/admin/settings`
+**Descripción:** Actualizar configuraciones del sistema
+
+**Request Body:**
+```json
+{
+  "site_name": "Mi Tienda Actualizada",
+  "tax_rate": 18.00,
+  "currency": "EUR"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "message": "Settings updated successfully"
+}
+```
+
+---
+
+### POST `/api/admin/settings/validate`
+**Descripción:** Validar configuraciones antes de guardar
+
+**Request Body:**
+```json
+{
+  "tax_rate": 18.00,
+  "currency": "EUR"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "valid": true,
+  "errors": []
+}
+```
+
+---
+
+### GET `/api/admin/settings/stats`
+**Descripción:** Obtener estadísticas de las configuraciones
+
+**Response (200 OK):**
+```json
+{
+  "total_settings": 15,
+  "last_updated": "2025-01-01 12:00:00",
+  "payment_methods_enabled": 2
+}
+```
+
+---
+
+### POST `/api/admin/settings/logo`
+**Descripción:** Subir logo del sitio
+
+**Request:** Multipart form-data
+- `logo`: archivo de imagen (JPG, PNG)
+
+**Response (200 OK):**
+```json
+{
+  "message": "Logo uploaded successfully",
+  "path": "uploads/logo.png"
+}
+```
+
+---
+
+### GET `/api/admin/settings/export`
+**Descripción:** Exportar configuraciones a JSON
+
+**Response (200 OK):**
+```json
+{
+  "exported_at": "2025-01-01 12:00:00",
+  "settings": {
+    "site_name": "Mi E-commerce",
+    "currency": "USD"
+  }
+}
+```
+
+---
+
+### POST `/api/admin/settings/import`
+**Descripción:** Importar configuraciones desde JSON
+
+**Request Body:**
+```json
+{
+  "settings": {
+    "site_name": "Nueva Tienda",
+    "currency": "EUR"
+  }
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "message": "Settings imported successfully"
+}
+```
+
+---
+
+### POST `/api/admin/settings/test-payment`
+**Descripción:** Probar conexión con pasarela de pago
+
+**Request Body:**
+```json
+{
+  "provider": "stripe",
+  "credentials": {
+    "public_key": "pk_test_...",
+    "secret_key": "sk_test_..."
+  }
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "Payment gateway connection successful"
+}
+```
+
+---
+
 ## Productos (Público)
 
 ### GET `/api/products`
@@ -255,6 +510,64 @@
 
 **Errores:**
 - `404` Product not found
+
+---
+
+## Gestión de Imágenes de Productos (Admin)
+
+**Autenticación requerida:** `Authorization: Bearer {token}`
+
+### DELETE `/api/admin/products/{product_id}/images/{image_id}`
+**Descripción:** Eliminar una imagen específica del producto
+
+**Response (200 OK):**
+```json
+{
+  "message": "Image deleted successfully"
+}
+```
+
+**Errores:**
+- `404` Product not found / Image not found
+- `400` Cannot delete the only primary image
+
+---
+
+### PUT `/api/admin/products/{product_id}/images/reorder`
+**Descripción:** Reordenar las imágenes del producto
+
+**Request Body:**
+```json
+{
+  "image_order": [3, 1, 2, 5, 4]
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "message": "Images reordered successfully"
+}
+```
+
+**Errores:**
+- `404` Product not found
+- `400` Invalid image order data
+
+---
+
+### PUT `/api/admin/products/{product_id}/images/{image_id}/primary`
+**Descripción:** Establecer una imagen como principal
+
+**Response (200 OK):**
+```json
+{
+  "message": "Primary image set successfully"
+}
+```
+
+**Errores:**
+- `404` Product not found / Image not found
 
 ---
 

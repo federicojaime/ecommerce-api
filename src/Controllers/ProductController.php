@@ -617,6 +617,113 @@ class ProductController
      */
 
     /**
+     * Subir imágenes adicionales a un producto existente
+     * POST /api/admin/products/{id}/images
+     */
+    public function uploadImages(Request $request, Response $response, array $args): Response
+    {
+        $productId = $args['id'];
+
+        try {
+            $this->db->beginTransaction();
+
+            // Verificar que el producto existe
+            $productStmt = $this->db->prepare("SELECT id FROM products WHERE id = ?");
+            $productStmt->execute([$productId]);
+            if (!$productStmt->fetch()) {
+                $response->getBody()->write(json_encode(['error' => 'Product not found']));
+                return $response->withStatus(404)->withHeader('Content-Type', 'application/json');
+            }
+
+            // Obtener los archivos subidos
+            $uploadedFiles = $request->getUploadedFiles();
+            error_log("Uploaded files: " . print_r(array_keys($uploadedFiles), true));
+
+            if (empty($uploadedFiles) || !isset($uploadedFiles['images'])) {
+                $response->getBody()->write(json_encode(['error' => 'No images provided']));
+                return $response->withStatus(400)->withHeader('Content-Type', 'application/json');
+            }
+
+            $images = $uploadedFiles['images'];
+
+            // Si es un solo archivo, convertirlo a array
+            if (!is_array($images)) {
+                $images = [$images];
+            }
+
+            // Obtener el siguiente sort_order disponible
+            $sortStmt = $this->db->prepare(
+                "SELECT COALESCE(MAX(sort_order), 0) as max_order FROM product_images WHERE product_id = ?"
+            );
+            $sortStmt->execute([$productId]);
+            $sortOrder = $sortStmt->fetch()['max_order'] + 1;
+
+            $uploadedImages = [];
+
+            foreach ($images as $image) {
+                try {
+                    // Validar el archivo
+                    $error = $image->getError();
+                    if ($error !== UPLOAD_ERR_OK) {
+                        error_log("Upload error: " . $error);
+                        continue;
+                    }
+
+                    // Subir la imagen
+                    $imagePath = $this->fileUpload->uploadFile($image, 'products');
+
+                    if ($imagePath) {
+                        // Insertar en la base de datos
+                        $stmt = $this->db->prepare(
+                            "INSERT INTO product_images (product_id, image_path, sort_order, is_primary)
+                             VALUES (?, ?, ?, 0)"
+                        );
+                        $stmt->execute([$productId, $imagePath, $sortOrder]);
+
+                        $imageId = $this->db->lastInsertId();
+
+                        $uploadedImages[] = [
+                            'id' => $imageId,
+                            'image_path' => $imagePath,
+                            'image_url' => $this->fileUpload->getImageUrl($imagePath),
+                            'sort_order' => $sortOrder,
+                            'is_primary' => false
+                        ];
+
+                        $sortOrder++;
+                    }
+                } catch (\Exception $e) {
+                    error_log("Error uploading individual image: " . $e->getMessage());
+                    // Continuar con las siguientes imágenes
+                    continue;
+                }
+            }
+
+            if (empty($uploadedImages)) {
+                $this->db->rollback();
+                $response->getBody()->write(json_encode(['error' => 'Failed to upload any images']));
+                return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+            }
+
+            $this->db->commit();
+
+            $response->getBody()->write(json_encode([
+                'message' => 'Images uploaded successfully',
+                'images' => $uploadedImages
+            ]));
+            return $response->withStatus(201)->withHeader('Content-Type', 'application/json');
+
+        } catch (\Exception $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollback();
+            }
+            error_log("Upload images error: " . $e->getMessage());
+            $response->getBody()->write(json_encode(['error' => 'Failed to upload images: ' . $e->getMessage()]));
+            return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+        }
+    }
+
+    /**
      * Eliminar imagen específica
      * DELETE /api/admin/products/{product_id}/images/{image_id}
      */

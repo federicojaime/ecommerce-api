@@ -11,6 +11,16 @@ use App\Controllers\UserController;
 use App\Controllers\OrderController;
 use App\Controllers\DashboardController;
 use App\Controllers\SettingsController;
+use App\Controllers\CartController;
+use App\Controllers\CheckoutController;
+use App\Controllers\CustomerOrderController;
+use App\Controllers\WishlistController;
+use App\Controllers\ReviewController;
+use App\Controllers\AddressController;
+use App\Controllers\CouponController;
+use App\Controllers\NotificationController;
+use App\Controllers\MercadoPagoController;
+use App\Controllers\PaymentController;
 use App\Middleware\AuthMiddleware;
 use Slim\Routing\RouteCollectorProxy;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -51,9 +61,9 @@ $app->addRoutingMiddleware();
 // Configurar middleware de errores
 $app->addErrorMiddleware(true, true, true);
 
-// Crear instancia de base de datos
+// Obtener instancia SINGLETON de base de datos (reutiliza conexión)
 try {
-    $database = new Database();
+    $database = Database::getInstance();
 } catch (Exception $e) {
     // Si falla la conexión a la base de datos, mostrar error
     $response = new \Slim\Psr7\Response();
@@ -65,11 +75,12 @@ try {
 }
 
 // Ruta principal (ROOT)
-$app->get('/', function (Request $request, Response $response) {
+$app->get('/', function (Request $request, Response $response) use ($database) {
     $data = [
         'message' => 'Ecommerce API v1.0',
         'status' => 'running',
         'timestamp' => date('Y-m-d H:i:s'),
+        'db_connections_created' => Database::getConnectionCount(),
         'endpoints' => [
             'auth' => [
                 'POST /api/auth/login',
@@ -131,6 +142,36 @@ $app->group('/api', function (RouteCollectorProxy $group) use ($database) {
         }
     });
 
+    $group->post('/auth/forgot-password', function (Request $request, Response $response) use ($database) {
+        try {
+            $controller = new AuthController($database);
+            return $controller->forgotPassword($request, $response);
+        } catch (Exception $e) {
+            $response->getBody()->write(json_encode(['error' => $e->getMessage()]));
+            return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+        }
+    });
+
+    $group->post('/auth/reset-password', function (Request $request, Response $response) use ($database) {
+        try {
+            $controller = new AuthController($database);
+            return $controller->resetPassword($request, $response);
+        } catch (Exception $e) {
+            $response->getBody()->write(json_encode(['error' => $e->getMessage()]));
+            return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+        }
+    });
+
+    $group->post('/auth/google', function (Request $request, Response $response) use ($database) {
+        try {
+            $controller = new AuthController($database);
+            return $controller->googleLogin($request, $response);
+        } catch (Exception $e) {
+            $response->getBody()->write(json_encode(['error' => $e->getMessage()]));
+            return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+        }
+    });
+
     // Productos públicos
     $group->get('/products', function (Request $request, Response $response) use ($database) {
         try {
@@ -167,6 +208,51 @@ $app->group('/api', function (RouteCollectorProxy $group) use ($database) {
         try {
             $controller = new CategoryController($database);
             return $controller->getOne($request, $response, $args);
+        } catch (Exception $e) {
+            $response->getBody()->write(json_encode(['error' => $e->getMessage()]));
+            return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+        }
+    });
+
+    // Reseñas públicas de productos
+    $group->get('/products/{product_id}/reviews', function (Request $request, Response $response, array $args) use ($database) {
+        try {
+            $controller = new ReviewController($database);
+            return $controller->getProductReviews($request, $response, $args);
+        } catch (Exception $e) {
+            $response->getBody()->write(json_encode(['error' => $e->getMessage()]));
+            return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+        }
+    });
+
+    // Validar cupón (público para preview antes de login)
+    $group->post('/coupons/validate', function (Request $request, Response $response) use ($database) {
+        try {
+            $controller = new CouponController($database);
+            return $controller->validate($request, $response);
+        } catch (Exception $e) {
+            $response->getBody()->write(json_encode(['error' => $e->getMessage()]));
+            return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+        }
+    });
+
+    // ========== MERCADO PAGO WEBHOOKS (PÚBLICO) ==========
+    $group->post('/webhooks/mercadopago', function (Request $request, Response $response) use ($database) {
+        try {
+            $controller = new MercadoPagoController($database);
+            return $controller->handleWebhook($request, $response);
+        } catch (Exception $e) {
+            error_log('Webhook handler error: ' . $e->getMessage());
+            $response->getBody()->write(json_encode(['error' => $e->getMessage()]));
+            return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+        }
+    });
+
+    // Obtener public key de Mercado Pago (público para el frontend)
+    $group->get('/mercadopago/public-key', function (Request $request, Response $response) use ($database) {
+        try {
+            $controller = new MercadoPagoController($database);
+            return $controller->getPublicKey($request, $response);
         } catch (Exception $e) {
             $response->getBody()->write(json_encode(['error' => $e->getMessage()]));
             return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
@@ -293,7 +379,13 @@ $app->group('/api', function (RouteCollectorProxy $group) use ($database) {
         });
 
         // ========== GESTIÓN DE IMÁGENES ==========
-        
+
+        // Subir imágenes adicionales
+        $adminGroup->post('/{id}/images', function (Request $request, Response $response, array $args) use ($database) {
+            $controller = new ProductController($database);
+            return $controller->uploadImages($request, $response, $args);
+        });
+
         // Eliminar imagen específica
         $adminGroup->delete('/{product_id}/images/{image_id}', function (Request $request, Response $response, array $args) use ($database) {
             $controller = new ProductController($database);
@@ -395,6 +487,239 @@ $app->group('/api', function (RouteCollectorProxy $group) use ($database) {
             $controller = new OrderController($database);
             return $controller->delete($request, $response, $args);
         });
+    });
+
+    // ========== CARRITO DE COMPRAS ==========
+    $group->get('/cart', function (Request $request, Response $response) use ($database) {
+        $controller = new CartController($database);
+        return $controller->getCart($request, $response);
+    });
+
+    $group->post('/cart', function (Request $request, Response $response) use ($database) {
+        $controller = new CartController($database);
+        return $controller->addItem($request, $response);
+    });
+
+    $group->put('/cart/items/{id}', function (Request $request, Response $response, array $args) use ($database) {
+        $controller = new CartController($database);
+        return $controller->updateItem($request, $response, $args);
+    });
+
+    $group->delete('/cart/items/{id}', function (Request $request, Response $response, array $args) use ($database) {
+        $controller = new CartController($database);
+        return $controller->removeItem($request, $response, $args);
+    });
+
+    $group->delete('/cart', function (Request $request, Response $response) use ($database) {
+        $controller = new CartController($database);
+        return $controller->clearCart($request, $response);
+    });
+
+    // ========== CHECKOUT ==========
+    $group->post('/checkout/validate', function (Request $request, Response $response) use ($database) {
+        $controller = new CheckoutController($database);
+        return $controller->validate($request, $response);
+    });
+
+    $group->post('/checkout/calculate', function (Request $request, Response $response) use ($database) {
+        $controller = new CheckoutController($database);
+        return $controller->calculate($request, $response);
+    });
+
+    $group->post('/checkout/complete', function (Request $request, Response $response) use ($database) {
+        $controller = new CheckoutController($database);
+        return $controller->complete($request, $response);
+    });
+
+    // Alias para create-order (mismo que complete)
+    $group->post('/checkout/create-order', function (Request $request, Response $response) use ($database) {
+        $controller = new CheckoutController($database);
+        return $controller->complete($request, $response);
+    });
+
+    // ========== MERCADO PAGO ==========
+    $group->post('/checkout/mercadopago/create-preference', function (Request $request, Response $response) use ($database) {
+        $controller = new MercadoPagoController($database);
+        return $controller->createPreference($request, $response);
+    });
+
+    $group->get('/checkout/mercadopago/success', function (Request $request, Response $response) use ($database) {
+        $controller = new MercadoPagoController($database);
+        return $controller->success($request, $response);
+    });
+
+    $group->get('/checkout/mercadopago/failure', function (Request $request, Response $response) use ($database) {
+        $controller = new MercadoPagoController($database);
+        return $controller->failure($request, $response);
+    });
+
+    $group->get('/checkout/mercadopago/pending', function (Request $request, Response $response) use ($database) {
+        $controller = new MercadoPagoController($database);
+        return $controller->pending($request, $response);
+    });
+
+    // ========== PAYMENTS ==========
+    $group->get('/payments', function (Request $request, Response $response) use ($database) {
+        $controller = new PaymentController($database);
+        return $controller->getAllPayments($request, $response);
+    });
+
+    $group->get('/payments/{orderId}', function (Request $request, Response $response, array $args) use ($database) {
+        $controller = new PaymentController($database);
+        return $controller->getPaymentByOrder($request, $response, $args);
+    });
+
+    $group->get('/payments/detail/{paymentId}', function (Request $request, Response $response, array $args) use ($database) {
+        $controller = new PaymentController($database);
+        return $controller->getPaymentDetail($request, $response, $args);
+    });
+
+    // ========== ÓRDENES DEL CLIENTE ==========
+    $group->get('/orders', function (Request $request, Response $response) use ($database) {
+        $controller = new CustomerOrderController($database);
+        return $controller->getMyOrders($request, $response);
+    });
+
+    $group->get('/orders/{id}', function (Request $request, Response $response, array $args) use ($database) {
+        $controller = new CustomerOrderController($database);
+        return $controller->getMyOrder($request, $response, $args);
+    });
+
+    $group->post('/orders/{id}/cancel', function (Request $request, Response $response, array $args) use ($database) {
+        $controller = new CustomerOrderController($database);
+        return $controller->cancelOrder($request, $response, $args);
+    });
+
+    // ========== WISHLIST (LISTA DE DESEOS) ==========
+    $group->get('/wishlist', function (Request $request, Response $response) use ($database) {
+        $controller = new WishlistController($database);
+        return $controller->getWishlist($request, $response);
+    });
+
+    $group->post('/wishlist', function (Request $request, Response $response) use ($database) {
+        $controller = new WishlistController($database);
+        return $controller->addItem($request, $response);
+    });
+
+    $group->delete('/wishlist/{product_id}', function (Request $request, Response $response, array $args) use ($database) {
+        $controller = new WishlistController($database);
+        return $controller->removeItem($request, $response, $args);
+    });
+
+    // ========== RESEÑAS DE PRODUCTOS ==========
+    $group->post('/products/{product_id}/reviews', function (Request $request, Response $response, array $args) use ($database) {
+        $controller = new ReviewController($database);
+        return $controller->createReview($request, $response, $args);
+    });
+
+    $group->put('/reviews/{id}', function (Request $request, Response $response, array $args) use ($database) {
+        $controller = new ReviewController($database);
+        return $controller->updateReview($request, $response, $args);
+    });
+
+    $group->delete('/reviews/{id}', function (Request $request, Response $response, array $args) use ($database) {
+        $controller = new ReviewController($database);
+        return $controller->deleteReview($request, $response, $args);
+    });
+
+    // ========== DIRECCIONES ==========
+    $group->get('/addresses', function (Request $request, Response $response) use ($database) {
+        $controller = new AddressController($database);
+        return $controller->getAll($request, $response);
+    });
+
+    $group->post('/addresses', function (Request $request, Response $response) use ($database) {
+        $controller = new AddressController($database);
+        return $controller->create($request, $response);
+    });
+
+    $group->put('/addresses/{id}', function (Request $request, Response $response, array $args) use ($database) {
+        $controller = new AddressController($database);
+        return $controller->update($request, $response, $args);
+    });
+
+    $group->delete('/addresses/{id}', function (Request $request, Response $response, array $args) use ($database) {
+        $controller = new AddressController($database);
+        return $controller->delete($request, $response, $args);
+    });
+
+    $group->put('/addresses/{id}/default', function (Request $request, Response $response, array $args) use ($database) {
+        $controller = new AddressController($database);
+        return $controller->setDefault($request, $response, $args);
+    });
+
+    // ========== NOTIFICACIONES ==========
+    $group->get('/notifications', function (Request $request, Response $response) use ($database) {
+        $controller = new NotificationController($database);
+        return $controller->getAll($request, $response);
+    });
+
+    $group->put('/notifications/{id}/read', function (Request $request, Response $response, array $args) use ($database) {
+        $controller = new NotificationController($database);
+        return $controller->markAsRead($request, $response, $args);
+    });
+
+    $group->post('/notifications/read-all', function (Request $request, Response $response) use ($database) {
+        $controller = new NotificationController($database);
+        return $controller->markAllAsRead($request, $response);
+    });
+
+    $group->delete('/notifications/{id}', function (Request $request, Response $response, array $args) use ($database) {
+        $controller = new NotificationController($database);
+        return $controller->delete($request, $response, $args);
+    });
+
+    // ========== ADMIN: NOTIFICACIONES ==========
+    $group->get('/admin/notifications', function (Request $request, Response $response) use ($database) {
+        $controller = new NotificationController($database);
+        return $controller->getAll($request, $response);
+    });
+
+    $group->put('/admin/notifications/{id}/read', function (Request $request, Response $response, array $args) use ($database) {
+        $controller = new NotificationController($database);
+        return $controller->markAsRead($request, $response, $args);
+    });
+
+    $group->post('/admin/notifications/read-all', function (Request $request, Response $response) use ($database) {
+        $controller = new NotificationController($database);
+        return $controller->markAllAsRead($request, $response);
+    });
+
+    $group->delete('/admin/notifications/{id}', function (Request $request, Response $response, array $args) use ($database) {
+        $controller = new NotificationController($database);
+        return $controller->delete($request, $response, $args);
+    });
+
+    // ========== ADMIN: RESEÑAS ==========
+    $group->get('/admin/reviews', function (Request $request, Response $response) use ($database) {
+        $controller = new ReviewController($database);
+        return $controller->getAllReviews($request, $response);
+    });
+
+    $group->put('/admin/reviews/{id}/moderate', function (Request $request, Response $response, array $args) use ($database) {
+        $controller = new ReviewController($database);
+        return $controller->moderateReview($request, $response, $args);
+    });
+
+    // ========== ADMIN: CUPONES ==========
+    $group->get('/admin/coupons', function (Request $request, Response $response) use ($database) {
+        $controller = new CouponController($database);
+        return $controller->getAll($request, $response);
+    });
+
+    $group->post('/admin/coupons', function (Request $request, Response $response) use ($database) {
+        $controller = new CouponController($database);
+        return $controller->create($request, $response);
+    });
+
+    $group->put('/admin/coupons/{id}', function (Request $request, Response $response, array $args) use ($database) {
+        $controller = new CouponController($database);
+        return $controller->update($request, $response, $args);
+    });
+
+    $group->delete('/admin/coupons/{id}', function (Request $request, Response $response, array $args) use ($database) {
+        $controller = new CouponController($database);
+        return $controller->delete($request, $response, $args);
     });
 })->add(new AuthMiddleware());
 
