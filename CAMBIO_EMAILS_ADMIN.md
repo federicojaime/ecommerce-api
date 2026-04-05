@@ -159,10 +159,10 @@ Admin notification sent to: Franconico25@gmail.com
 3. **Verificar configuración SMTP**
    - El archivo `.env` debe tener las credenciales correctas:
    ```
-   SMTP_HOST=smtp.hostinger.com
+   SMTP_HOST=tu_host_smtp
    SMTP_PORT=587
-   SMTP_USER=info@decohomesinrival.com.ar
-   SMTP_PASS=6ceNr+h!V
+   SMTP_USER=tu_usuario_smtp
+   SMTP_PASS=tu_contraseña_smtp
    ```
 
 4. **Verificar límites de SMTP**

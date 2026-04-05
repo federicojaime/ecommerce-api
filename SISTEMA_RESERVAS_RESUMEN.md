@@ -88,14 +88,14 @@ POST   /api/admin/reservations/{id}/reject   - Rechazar
 
 ### Variables en .env
 ```env
-SMTP_HOST=smtp.hostinger.com
+SMTP_HOST=tu_host_smtp
 SMTP_PORT=587
-SMTP_USER=info@decohomesinrival.com.ar
-SMTP_PASS=6ceNr+h!V
-MAIL_FROM=info@decohomesinrival.com.ar
+SMTP_USER=tu_usuario_smtp
+SMTP_PASS=tu_contraseña_smtp
+MAIL_FROM=tu_email
 MAIL_FROM_NAME="DecoHomes Sin Rival"
-ADMIN_EMAIL=info@decohomesinrival.com.ar
-ADMIN_URL=https://decohomesinrival.com.ar/admin
+ADMIN_EMAIL=tu_email_admin
+ADMIN_URL=https://tu-dominio.com/admin
 ```
 
 ---

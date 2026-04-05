@@ -5,4 +5,4 @@
 /logs/*
 !/logs/README.md
 .phpunit.result.cache
-/public/uploads/
+/public/uploads/.env
