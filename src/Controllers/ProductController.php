@@ -94,15 +94,44 @@ class ProductController
         $params = $request->getQueryParams();
 
         $page = max(1, (int)($params['page'] ?? 1));
-        $limit = min(100, max(1, (int)($params['limit'] ?? 10)));
+        // Permitir límite más alto para ordenamiento (hasta 500)
+        $limit = min(500, max(1, (int)($params['limit'] ?? 10)));
         $offset = ($page - 1) * $limit;
 
         $search = $params['search'] ?? '';
         $category = $params['category'] ?? '';
         $status = $params['status'] ?? '';
+        $archived = $params['archived'] ?? '';
 
         $where = [];
         $bindings = [];
+
+        // Verificar si existe la columna archived
+        $hasArchived = false;
+        try {
+            $checkStmt = $this->db->query("SHOW COLUMNS FROM products LIKE 'archived'");
+            $hasArchived = $checkStmt->rowCount() > 0;
+
+            // Si no existe, crearla
+            if (!$hasArchived) {
+                $this->db->exec("ALTER TABLE products ADD COLUMN archived TINYINT(1) NOT NULL DEFAULT 0");
+                $hasArchived = true;
+                error_log("Created 'archived' column in products table");
+            }
+        } catch (\Exception $e) {
+            error_log("Error checking/creating archived column: " . $e->getMessage());
+        }
+
+        // Filtrar por archivados
+        if ($hasArchived) {
+            if ($archived === '1' || $archived === 'true') {
+                $where[] = "p.archived = 1";
+            } elseif ($archived === '0' || $archived === 'false' || $archived === '') {
+                // Por defecto, no mostrar archivados
+                $where[] = "p.archived = 0";
+            }
+            // Si archived === 'all', no filtramos
+        }
 
         if ($search) {
             $where[] = "(p.name LIKE ? OR p.sku LIKE ? OR p.description LIKE ?)";
@@ -128,13 +157,45 @@ class ProductController
         $countStmt->execute($bindings);
         $total = $countStmt->fetch()['total'];
 
+        // Verificar si existe la columna sort_order
+        $hasSortOrder = false;
+        try {
+            $checkStmt = $this->db->query("SHOW COLUMNS FROM products LIKE 'sort_order'");
+            $hasSortOrder = $checkStmt->rowCount() > 0;
+        } catch (\Exception $e) {
+            // Si falla, asumimos que no existe
+        }
+
+        // Ordenar según parámetro sort del usuario, o por sort_order si existe
+        $sort = $params['sort'] ?? '';
+        switch ($sort) {
+            case 'price_asc':
+                $orderBy = "ORDER BY CAST(COALESCE(NULLIF(p.sale_price, ''), p.price) AS DECIMAL(10,2)) ASC";
+                break;
+            case 'price_desc':
+                $orderBy = "ORDER BY CAST(COALESCE(NULLIF(p.sale_price, ''), p.price) AS DECIMAL(10,2)) DESC";
+                break;
+            case 'name_asc':
+                $orderBy = "ORDER BY p.name ASC";
+                break;
+            case 'name_desc':
+                $orderBy = "ORDER BY p.name DESC";
+                break;
+            case 'newest':
+                $orderBy = "ORDER BY p.created_at DESC";
+                break;
+            default:
+                $orderBy = $hasSortOrder ? "ORDER BY p.sort_order ASC, p.id ASC" : "ORDER BY p.id DESC";
+                break;
+        }
+
         // Obtener productos
         $sql = "SELECT p.*, c.name as category_name,
                        (SELECT image_path FROM product_images pi WHERE pi.product_id = p.id AND pi.is_primary = 1 LIMIT 1) as primary_image
-                FROM products p 
-                LEFT JOIN categories c ON p.category_id = c.id 
+                FROM products p
+                LEFT JOIN categories c ON p.category_id = c.id
                 {$whereClause}
-                ORDER BY p.id DESC 
+                {$orderBy}
                 LIMIT {$limit} OFFSET {$offset}";
 
         $stmt = $this->db->prepare($sql);
@@ -143,6 +204,51 @@ class ProductController
 
         // Agregar URLs de imágenes
         $products = $this->addImageUrls($products);
+
+        // ========== COLORES DISPONIBLES POR PRODUCTO ==========
+        try {
+            if (!empty($products)) {
+                $productIds = array_column($products, 'id');
+                $placeholders = implode(',', array_fill(0, count($productIds), '?'));
+
+                $colorSql = "SELECT DISTINCT pv.product_id, pav.color_hex
+                             FROM product_variants pv
+                             JOIN product_variant_attributes pva ON pva.variant_id = pv.id
+                             JOIN product_attribute_values pav ON pav.id = pva.attribute_value_id
+                             JOIN product_attributes pa ON pa.id = pva.attribute_id
+                             WHERE pv.product_id IN ({$placeholders})
+                               AND pv.is_active = 1 AND pa.type = 'color' AND pav.color_hex IS NOT NULL";
+
+                $colorStmt = $this->db->prepare($colorSql);
+                $colorStmt->execute($productIds);
+                $colorRows = $colorStmt->fetchAll();
+
+                // Agrupar por product_id
+                $colorMap = [];
+                foreach ($colorRows as $row) {
+                    $pid = $row['product_id'];
+                    if (!isset($colorMap[$pid])) {
+                        $colorMap[$pid] = [];
+                    }
+                    if (!in_array($row['color_hex'], $colorMap[$pid])) {
+                        $colorMap[$pid][] = $row['color_hex'];
+                    }
+                }
+
+                // Asignar a cada producto
+                foreach ($products as &$p) {
+                    $p['available_colors'] = $colorMap[$p['id']] ?? [];
+                }
+                unset($p);
+            }
+        } catch (\Exception $e) {
+            // Si las tablas de variantes no existen, no fallar
+            error_log("Colors query failed (tables may not exist): " . $e->getMessage());
+            foreach ($products as &$p) {
+                $p['available_colors'] = [];
+            }
+            unset($p);
+        }
 
         $result = [
             'data' => $products,
@@ -182,6 +288,88 @@ class ProductController
 
         // Agregar URLs de imágenes
         $product = $this->addImageUrls($product);
+
+        // ========== VARIANTES ==========
+        try {
+            $variantSql = "SELECT pv.id as variant_id, pv.sku_suffix, pv.price_adjustment, pv.stock as variant_stock,
+                                  pv.is_active as variant_active, pv.sort_order as variant_sort,
+                                  pva.attribute_id, pva.attribute_value_id,
+                                  pa.name as attribute_name, pa.display_name, pa.type as attribute_type,
+                                  pav.value as attribute_value, pav.color_hex
+                           FROM product_variants pv
+                           LEFT JOIN product_variant_attributes pva ON pva.variant_id = pv.id
+                           LEFT JOIN product_attributes pa ON pa.id = pva.attribute_id
+                           LEFT JOIN product_attribute_values pav ON pav.id = pva.attribute_value_id
+                           WHERE pv.product_id = ? AND pv.is_active = 1
+                           ORDER BY pv.sort_order ASC, pv.id ASC, pa.sort_order ASC";
+
+            $varStmt = $this->db->prepare($variantSql);
+            $varStmt->execute([$id]);
+            $varRows = $varStmt->fetchAll();
+
+            // Agrupar variantes
+            $variants = [];
+            $availableAttributes = [];
+
+            foreach ($varRows as $row) {
+                $vid = $row['variant_id'];
+                if (!isset($variants[$vid])) {
+                    $variants[$vid] = [
+                        'id' => (int)$row['variant_id'],
+                        'sku_suffix' => $row['sku_suffix'],
+                        'price_adjustment' => $row['price_adjustment'],
+                        'stock' => (int)$row['variant_stock'],
+                        'attributes' => []
+                    ];
+                }
+                if ($row['attribute_id']) {
+                    $variants[$vid]['attributes'][] = [
+                        'attribute_id' => (int)$row['attribute_id'],
+                        'attribute_value_id' => (int)$row['attribute_value_id'],
+                        'attribute_name' => $row['attribute_name'],
+                        'display_name' => $row['display_name'],
+                        'attribute_type' => $row['attribute_type'],
+                        'value' => $row['attribute_value'],
+                        'color_hex' => $row['color_hex']
+                    ];
+
+                    // Construir available_attributes agrupado por attribute_id
+                    $attrId = (int)$row['attribute_id'];
+                    if (!isset($availableAttributes[$attrId])) {
+                        $availableAttributes[$attrId] = [
+                            'attribute_id' => $attrId,
+                            'attribute_name' => $row['attribute_name'],
+                            'display_name' => $row['display_name'],
+                            'attribute_type' => $row['attribute_type'],
+                            'values' => []
+                        ];
+                    }
+                    $valId = (int)$row['attribute_value_id'];
+                    $exists = false;
+                    foreach ($availableAttributes[$attrId]['values'] as $existing) {
+                        if ($existing['value_id'] === $valId) {
+                            $exists = true;
+                            break;
+                        }
+                    }
+                    if (!$exists) {
+                        $availableAttributes[$attrId]['values'][] = [
+                            'value_id' => $valId,
+                            'value' => $row['attribute_value'],
+                            'color_hex' => $row['color_hex']
+                        ];
+                    }
+                }
+            }
+
+            $product['variants'] = array_values($variants);
+            $product['available_attributes'] = array_values($availableAttributes);
+        } catch (\Exception $e) {
+            // Si las tablas de variantes no existen, no fallar
+            error_log("Variants query failed (tables may not exist): " . $e->getMessage());
+            $product['variants'] = [];
+            $product['available_attributes'] = [];
+        }
 
         $response->getBody()->write(json_encode($product));
         return $response->withHeader('Content-Type', 'application/json');
@@ -261,17 +449,19 @@ class ProductController
 
             error_log("Product created with ID: " . $productId);
 
-            // Manejar imagen si existe
-            $imageProcessed = false;
+            // Manejar imágenes - procesar TODAS las imágenes subidas
+            $imagesProcessed = 0;
+            $sortOrder = 0;
+
+            // Procesar imagen principal si existe
             if (isset($uploadedFiles['image']) && $uploadedFiles['image']->getError() === UPLOAD_ERR_OK) {
                 $uploadedFile = $uploadedFiles['image'];
-                error_log("Processing image upload for product: " . $productId);
-                
+                error_log("Processing main image upload for product: " . $productId);
+
                 try {
                     $imagePath = $this->fileUpload->uploadFile($uploadedFile, 'products');
                     error_log("Image path returned: " . $imagePath);
-                    
-                    // Guardar imagen en la base de datos
+
                     $imgSql = "INSERT INTO product_images (product_id, image_path, alt_text, is_primary, sort_order) VALUES (?, ?, ?, ?, ?)";
                     $imgStmt = $this->db->prepare($imgSql);
                     $result = $imgStmt->execute([
@@ -279,37 +469,65 @@ class ProductController
                         $imagePath,
                         $data['name'],
                         1, // Primera imagen es primaria
-                        0
+                        $sortOrder++
                     ]);
-                    
+
                     if ($result) {
-                        error_log("Image saved successfully in database: " . $imagePath);
-                        $imageProcessed = true;
-                    } else {
-                        error_log("Failed to save image in database");
+                        error_log("Main image saved successfully: " . $imagePath);
+                        $imagesProcessed++;
                     }
                 } catch (\Exception $e) {
-                    error_log("Image upload error: " . $e->getMessage());
-                    // No fallar la creación del producto por un error de imagen
+                    error_log("Main image upload error: " . $e->getMessage());
                 }
-            } else if (isset($uploadedFiles['image'])) {
-                error_log("Image upload error code: " . $uploadedFiles['image']->getError());
-            } else {
-                error_log("No image file found in upload");
             }
+
+            // Procesar imágenes adicionales (images[])
+            if (isset($uploadedFiles['images']) && is_array($uploadedFiles['images'])) {
+                error_log("Processing " . count($uploadedFiles['images']) . " additional images");
+
+                foreach ($uploadedFiles['images'] as $index => $uploadedFile) {
+                    if ($uploadedFile->getError() === UPLOAD_ERR_OK) {
+                        try {
+                            $imagePath = $this->fileUpload->uploadFile($uploadedFile, 'products');
+                            error_log("Additional image {$index} uploaded: " . $imagePath);
+
+                            $imgSql = "INSERT INTO product_images (product_id, image_path, alt_text, is_primary, sort_order) VALUES (?, ?, ?, ?, ?)";
+                            $imgStmt = $this->db->prepare($imgSql);
+                            $result = $imgStmt->execute([
+                                $productId,
+                                $imagePath,
+                                $data['name'] . ' - Imagen ' . ($sortOrder + 1),
+                                $imagesProcessed === 0 ? 1 : 0, // Primera es primaria si no hay otra
+                                $sortOrder++
+                            ]);
+
+                            if ($result) {
+                                error_log("Additional image {$index} saved successfully");
+                                $imagesProcessed++;
+                            }
+                        } catch (\Exception $e) {
+                            error_log("Additional image {$index} upload error: " . $e->getMessage());
+                        }
+                    } else {
+                        error_log("Additional image {$index} error code: " . $uploadedFile->getError());
+                    }
+                }
+            }
+
+            error_log("Total images processed: " . $imagesProcessed);
 
             $this->db->commit();
             error_log("=== CREATE PRODUCT SUCCESS ===");
 
             $resultMessage = 'Product created successfully';
-            if ($imageProcessed) {
-                $resultMessage .= ' with image';
+            if ($imagesProcessed > 0) {
+                $resultMessage .= " with {$imagesProcessed} image" . ($imagesProcessed > 1 ? 's' : '');
             }
 
             $response->getBody()->write(json_encode([
                 'message' => $resultMessage,
                 'product_id' => $productId,
-                'image_processed' => $imageProcessed
+                'images_processed' => $imagesProcessed
             ]));
             return $response->withStatus(201)->withHeader('Content-Type', 'application/json');
 
@@ -372,6 +590,17 @@ class ProductController
             ];
 
             foreach ($allowedFields as $field => $type) {
+                // Caso especial: sale_price vacío o 0 debe guardarse como NULL
+                if ($field === 'sale_price' && array_key_exists($field, $data)) {
+                    $salePrice = $data[$field];
+                    // Si está vacío, es 0, o no es un número válido mayor a 0, guardar NULL
+                    if ($salePrice === '' || $salePrice === null || $salePrice === '0' || (is_numeric($salePrice) && (float)$salePrice <= 0)) {
+                        $updateFields[] = "sale_price = NULL";
+                        // No agregamos nada a $params porque usamos NULL directamente en el SQL
+                        continue;
+                    }
+                }
+
                 if (array_key_exists($field, $data) && $data[$field] !== '') {
                     // Validaciones especiales
                     if ($field === 'sku' && !empty($data[$field])) {
@@ -417,7 +646,7 @@ class ProductController
             // Generar slug si se actualiza el nombre
             if (isset($data['name']) && !empty($data['name'])) {
                 $updateFields[] = "slug = ?";
-                $params[] = $this->generateSlug($data['name']);
+                $params[] = $this->generateSlug($data['name'], $id);
             }
 
             // Actualizar producto si hay campos
@@ -608,6 +837,98 @@ class ProductController
             $this->db->rollback();
             error_log("Product deletion error: " . $e->getMessage());
             $response->getBody()->write(json_encode(['error' => 'Failed to delete product']));
+            return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+        }
+    }
+
+    /**
+     * ========== ARCHIVAR/DESARCHIVAR PRODUCTOS ==========
+     */
+
+    /**
+     * Archivar producto (soft delete)
+     * PUT /api/admin/products/{id}/archive
+     */
+    public function archive(Request $request, Response $response, array $args): Response
+    {
+        $id = $args['id'];
+
+        try {
+            // Verificar que el producto existe
+            $checkStmt = $this->db->prepare("SELECT id, name FROM products WHERE id = ?");
+            $checkStmt->execute([$id]);
+            $product = $checkStmt->fetch();
+
+            if (!$product) {
+                $response->getBody()->write(json_encode(['error' => 'Product not found']));
+                return $response->withStatus(404)->withHeader('Content-Type', 'application/json');
+            }
+
+            // Verificar/crear columna archived si no existe
+            try {
+                $checkCol = $this->db->query("SHOW COLUMNS FROM products LIKE 'archived'");
+                if ($checkCol->rowCount() === 0) {
+                    $this->db->exec("ALTER TABLE products ADD COLUMN archived TINYINT(1) NOT NULL DEFAULT 0");
+                }
+            } catch (\Exception $e) {
+                error_log("Error creating archived column: " . $e->getMessage());
+            }
+
+            // Archivar el producto
+            $stmt = $this->db->prepare("UPDATE products SET archived = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?");
+            $stmt->execute([$id]);
+
+            error_log("Product archived: " . $product['name'] . " (ID: " . $id . ")");
+
+            $response->getBody()->write(json_encode([
+                'message' => 'Producto archivado correctamente',
+                'product_id' => $id,
+                'product_name' => $product['name']
+            ]));
+            return $response->withHeader('Content-Type', 'application/json');
+
+        } catch (\Exception $e) {
+            error_log("Archive product error: " . $e->getMessage());
+            $response->getBody()->write(json_encode(['error' => 'Failed to archive product']));
+            return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+        }
+    }
+
+    /**
+     * Desarchivar producto (restaurar)
+     * PUT /api/admin/products/{id}/unarchive
+     */
+    public function unarchive(Request $request, Response $response, array $args): Response
+    {
+        $id = $args['id'];
+
+        try {
+            // Verificar que el producto existe
+            $checkStmt = $this->db->prepare("SELECT id, name FROM products WHERE id = ?");
+            $checkStmt->execute([$id]);
+            $product = $checkStmt->fetch();
+
+            if (!$product) {
+                $response->getBody()->write(json_encode(['error' => 'Product not found']));
+                return $response->withStatus(404)->withHeader('Content-Type', 'application/json');
+            }
+
+            // Desarchivar el producto
+            $stmt = $this->db->prepare("UPDATE products SET archived = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?");
+            $stmt->execute([$id]);
+
+            error_log("Product unarchived: " . $product['name'] . " (ID: " . $id . ")");
+
+            $response->getBody()->write(json_encode([
+                'message' => 'Producto restaurado correctamente',
+                'product_id' => $id,
+                'product_name' => $product['name']
+            ]));
+            return $response->withHeader('Content-Type', 'application/json');
+
+        } catch (\Exception $e) {
+            error_log("Unarchive product error: " . $e->getMessage());
+            $response->getBody()->write(json_encode(['error' => 'Failed to unarchive product']));
             return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
         }
     }
@@ -902,6 +1223,194 @@ class ProductController
     }
 
     /**
+     * ========== REORDENAMIENTO DE PRODUCTOS ==========
+     */
+
+    /**
+     * Reordenar productos manualmente
+     * PUT /api/admin/products/reorder
+     */
+    public function reorderProducts(Request $request, Response $response): Response
+    {
+        try {
+            $data = json_decode($request->getBody()->getContents(), true);
+
+            if (!isset($data['product_ids']) || !is_array($data['product_ids'])) {
+                $response->getBody()->write(json_encode(['error' => 'product_ids array is required']));
+                return $response->withStatus(400)->withHeader('Content-Type', 'application/json');
+            }
+
+            $productIds = $data['product_ids'];
+            error_log("Reordering " . count($productIds) . " products");
+
+            // Verificar/crear columna sort_order si no existe
+            try {
+                $checkSql = "SHOW COLUMNS FROM products LIKE 'sort_order'";
+                $checkStmt = $this->db->query($checkSql);
+                if ($checkStmt->rowCount() === 0) {
+                    error_log("Creating sort_order column in products table");
+                    $this->db->exec("ALTER TABLE products ADD COLUMN sort_order INT NOT NULL DEFAULT 0");
+                }
+            } catch (\Exception $e) {
+                error_log("Error checking/creating sort_order column: " . $e->getMessage());
+            }
+
+            $this->db->beginTransaction();
+
+            // Usar CASE WHEN para actualizar todos en una sola query (mucho más rápido)
+            if (count($productIds) > 0) {
+                $cases = [];
+                $ids = [];
+                foreach ($productIds as $index => $productId) {
+                    $cases[] = "WHEN id = " . (int)$productId . " THEN " . (int)$index;
+                    $ids[] = (int)$productId;
+                }
+
+                $sql = "UPDATE products SET sort_order = CASE " . implode(' ', $cases) . " END WHERE id IN (" . implode(',', $ids) . ")";
+                $this->db->exec($sql);
+            }
+
+            $this->db->commit();
+
+            $response->getBody()->write(json_encode([
+                'message' => 'Products reordered successfully',
+                'count' => count($productIds)
+            ]));
+            return $response->withHeader('Content-Type', 'application/json');
+
+        } catch (\Exception $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollback();
+            }
+            error_log("Reorder products error: " . $e->getMessage());
+            $response->getBody()->write(json_encode(['error' => 'Failed to reorder products']));
+            return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+        }
+    }
+
+    /**
+     * Actualizar productos destacados en batch
+     * POST /api/admin/products/featured
+     */
+    public function updateFeaturedProducts(Request $request, Response $response): Response
+    {
+        try {
+            $data = json_decode($request->getBody()->getContents(), true);
+
+            if (!isset($data['featured_ids']) || !is_array($data['featured_ids'])) {
+                $response->getBody()->write(json_encode(['error' => 'featured_ids array is required']));
+                return $response->withStatus(400)->withHeader('Content-Type', 'application/json');
+            }
+
+            $featuredIds = $data['featured_ids'];
+            error_log("Updating featured products: " . count($featuredIds) . " products");
+
+            // Verificar/crear columnas si no existen
+            try {
+                $checkFeatured = $this->db->query("SHOW COLUMNS FROM products LIKE 'is_featured'");
+                if ($checkFeatured->rowCount() === 0) {
+                    $this->db->exec("ALTER TABLE products ADD COLUMN is_featured TINYINT(1) NOT NULL DEFAULT 0");
+                }
+                $checkOrder = $this->db->query("SHOW COLUMNS FROM products LIKE 'featured_order'");
+                if ($checkOrder->rowCount() === 0) {
+                    $this->db->exec("ALTER TABLE products ADD COLUMN featured_order INT DEFAULT NULL");
+                }
+            } catch (\Exception $e) {
+                error_log("Error checking/creating featured columns: " . $e->getMessage());
+            }
+
+            $this->db->beginTransaction();
+
+            // Primero, quitar destacado de todos los productos
+            $this->db->exec("UPDATE products SET is_featured = 0, featured_order = NULL");
+
+            // Luego, marcar los destacados con su orden
+            if (count($featuredIds) > 0) {
+                $stmt = $this->db->prepare("UPDATE products SET is_featured = 1, featured_order = ? WHERE id = ?");
+                foreach ($featuredIds as $order => $productId) {
+                    $stmt->execute([$order + 1, $productId]);
+                }
+            }
+
+            $this->db->commit();
+
+            $response->getBody()->write(json_encode([
+                'message' => 'Productos destacados actualizados correctamente',
+                'count' => count($featuredIds)
+            ]));
+            return $response->withHeader('Content-Type', 'application/json');
+
+        } catch (\Exception $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollback();
+            }
+            error_log("Update featured products error: " . $e->getMessage());
+            $response->getBody()->write(json_encode(['error' => 'Failed to update featured products']));
+            return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+        }
+    }
+
+    /**
+     * Obtener productos ordenados para el ordenador
+     * GET /api/admin/products/sorted
+     */
+    public function getSortedProducts(Request $request, Response $response): Response
+    {
+        try {
+            $queryParams = $request->getQueryParams();
+            $categoryId = $queryParams['category_id'] ?? null;
+
+            // Verificar si existe la columna sort_order
+            $hasSortOrder = false;
+            try {
+                $checkSql = "SHOW COLUMNS FROM products LIKE 'sort_order'";
+                $checkStmt = $this->db->query($checkSql);
+                $hasSortOrder = $checkStmt->rowCount() > 0;
+            } catch (\Exception $e) {
+                error_log("Could not check for sort_order column: " . $e->getMessage());
+            }
+
+            // Construir SQL según si existe sort_order
+            if ($hasSortOrder) {
+                $sql = "SELECT p.id, p.name, p.sku, p.price, p.stock, p.status, p.sort_order, p.category_id,
+                               c.name as category_name,
+                               (SELECT image_path FROM product_images WHERE product_id = p.id AND is_primary = 1 LIMIT 1) as image
+                        FROM products p
+                        LEFT JOIN categories c ON p.category_id = c.id";
+            } else {
+                $sql = "SELECT p.id, p.name, p.sku, p.price, p.stock, p.status, 0 as sort_order, p.category_id,
+                               c.name as category_name,
+                               (SELECT image_path FROM product_images WHERE product_id = p.id AND is_primary = 1 LIMIT 1) as image
+                        FROM products p
+                        LEFT JOIN categories c ON p.category_id = c.id";
+            }
+
+            $params = [];
+            if ($categoryId) {
+                $sql .= " WHERE p.category_id = ?";
+                $params[] = $categoryId;
+            }
+
+            $sql .= $hasSortOrder ? " ORDER BY p.sort_order ASC, p.id ASC" : " ORDER BY p.id ASC";
+
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute($params);
+            $products = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            $response->getBody()->write(json_encode([
+                'data' => $products,
+                'total' => count($products)
+            ]));
+            return $response->withHeader('Content-Type', 'application/json');
+
+        } catch (\Exception $e) {
+            error_log("Get sorted products error: " . $e->getMessage());
+            $response->getBody()->write(json_encode(['error' => 'Failed to get sorted products']));
+            return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+        }
+    }
+
+    /**
      * ========== MÉTODOS HELPER ==========
      */
 
@@ -923,14 +1432,41 @@ class ProductController
     }
 
     /**
-     * Generar slug a partir del nombre
+     * Generar slug único a partir del nombre
      */
-    private function generateSlug($name)
+    private function generateSlug($name, $excludeId = null)
     {
-        $slug = strtolower(trim($name));
-        $slug = preg_replace('/[^a-z0-9-]/', '-', $slug);
-        $slug = preg_replace('/-+/', '-', $slug);
-        return trim($slug, '-');
+        $baseSlug = strtolower(trim($name));
+        $baseSlug = preg_replace('/[^a-z0-9-]/', '-', $baseSlug);
+        $baseSlug = preg_replace('/-+/', '-', $baseSlug);
+        $baseSlug = trim($baseSlug, '-');
+
+        // Verificar si el slug ya existe y generar uno único
+        $slug = $baseSlug;
+        $counter = 1;
+
+        while (true) {
+            $sql = "SELECT id FROM products WHERE slug = ?";
+            $params = [$slug];
+
+            if ($excludeId) {
+                $sql .= " AND id != ?";
+                $params[] = $excludeId;
+            }
+
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute($params);
+
+            if (!$stmt->fetch()) {
+                break; // Slug es único
+            }
+
+            // Agregar sufijo numérico
+            $slug = $baseSlug . '-' . $counter;
+            $counter++;
+        }
+
+        return $slug;
     }
 
     /**

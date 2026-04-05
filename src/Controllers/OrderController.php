@@ -319,6 +319,286 @@ class OrderController
         }
     }
 
+    /**
+     * Exportar pedidos a CSV, Excel o PDF
+     * GET /api/admin/orders/export?format=csv&status=pending
+     */
+    public function export(Request $request, Response $response): Response
+    {
+        $params = $request->getQueryParams();
+        $format = $params['format'] ?? 'csv'; // csv, excel, pdf
+        $status = $params['status'] ?? '';
+        $search = $params['search'] ?? '';
+
+        // Construir query
+        $where = [];
+        $bindings = [];
+
+        if ($status) {
+            $where[] = "o.status = ?";
+            $bindings[] = $status;
+        }
+
+        if ($search) {
+            $where[] = "(o.order_number LIKE ? OR o.customer_name LIKE ? OR o.customer_email LIKE ?)";
+            $searchTerm = "%{$search}%";
+            $bindings = array_merge($bindings, [$searchTerm, $searchTerm, $searchTerm]);
+        }
+
+        $whereClause = $where ? 'WHERE ' . implode(' AND ', $where) : '';
+
+        $sql = "SELECT o.id, o.order_number, o.customer_name, o.customer_email, o.customer_phone,
+                       o.status, o.payment_status, o.subtotal, o.tax_amount, o.shipping_amount,
+                       o.total_amount, o.created_at,
+                       (SELECT COUNT(*) FROM order_items WHERE order_id = o.id) as items_count
+                FROM orders o
+                {$whereClause}
+                ORDER BY o.id DESC";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($bindings);
+        $orders = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        if (empty($orders)) {
+            $response->getBody()->write(json_encode(['error' => 'No orders found to export']));
+            return $response->withStatus(404)->withHeader('Content-Type', 'application/json');
+        }
+
+        // Generar exportación según el formato
+        switch ($format) {
+            case 'excel':
+                return $this->exportToExcel($orders, $response);
+            case 'pdf':
+                return $this->exportToPDF($orders, $response);
+            case 'csv':
+            default:
+                return $this->exportToCSV($orders, $response);
+        }
+    }
+
+    /**
+     * Exportar a CSV
+     */
+    private function exportToCSV(array $orders, Response $response): Response
+    {
+        $filename = 'pedidos-' . date('Y-m-d-His') . '.csv';
+
+        // Crear contenido CSV
+        $output = fopen('php://temp', 'r+');
+
+        // Headers CSV
+        $headers = [
+            'ID',
+            'Número de Pedido',
+            'Cliente',
+            'Email',
+            'Teléfono',
+            'Estado',
+            'Estado de Pago',
+            'Subtotal',
+            'Impuestos',
+            'Envío',
+            'Total',
+            'Items',
+            'Fecha de Creación'
+        ];
+
+        fputcsv($output, $headers);
+
+        // Datos
+        foreach ($orders as $order) {
+            $row = [
+                $order['id'],
+                $order['order_number'],
+                $order['customer_name'],
+                $order['customer_email'],
+                $order['customer_phone'] ?? '-',
+                ucfirst($order['status']),
+                ucfirst($order['payment_status']),
+                number_format($order['subtotal'], 2),
+                number_format($order['tax_amount'], 2),
+                number_format($order['shipping_amount'], 2),
+                number_format($order['total_amount'], 2),
+                $order['items_count'],
+                date('d/m/Y H:i', strtotime($order['created_at']))
+            ];
+            fputcsv($output, $row);
+        }
+
+        rewind($output);
+        $csvContent = stream_get_contents($output);
+        fclose($output);
+
+        $response->getBody()->write($csvContent);
+        return $response
+            ->withHeader('Content-Type', 'text/csv; charset=utf-8')
+            ->withHeader('Content-Disposition', "attachment; filename=\"{$filename}\"")
+            ->withHeader('Cache-Control', 'max-age=0');
+    }
+
+    /**
+     * Exportar a Excel (HTML que Excel puede abrir)
+     */
+    private function exportToExcel(array $orders, Response $response): Response
+    {
+        $filename = 'pedidos-' . date('Y-m-d-His') . '.xls';
+
+        // Crear tabla HTML que Excel puede abrir
+        $html = '<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #000; padding: 8px; text-align: left; }
+        th { background-color: #4CAF50; color: white; font-weight: bold; }
+        tr:nth-child(even) { background-color: #f2f2f2; }
+    </style>
+</head>
+<body>
+    <h1>Reporte de Pedidos - ' . date('d/m/Y H:i') . '</h1>
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Número de Pedido</th>
+                <th>Cliente</th>
+                <th>Email</th>
+                <th>Teléfono</th>
+                <th>Estado</th>
+                <th>Estado de Pago</th>
+                <th>Subtotal</th>
+                <th>Impuestos</th>
+                <th>Envío</th>
+                <th>Total</th>
+                <th>Items</th>
+                <th>Fecha</th>
+            </tr>
+        </thead>
+        <tbody>';
+
+        foreach ($orders as $order) {
+            $html .= '<tr>
+                <td>' . htmlspecialchars($order['id']) . '</td>
+                <td>' . htmlspecialchars($order['order_number']) . '</td>
+                <td>' . htmlspecialchars($order['customer_name']) . '</td>
+                <td>' . htmlspecialchars($order['customer_email']) . '</td>
+                <td>' . htmlspecialchars($order['customer_phone'] ?? '-') . '</td>
+                <td>' . ucfirst($order['status']) . '</td>
+                <td>' . ucfirst($order['payment_status']) . '</td>
+                <td>$' . number_format($order['subtotal'], 2) . '</td>
+                <td>$' . number_format($order['tax_amount'], 2) . '</td>
+                <td>$' . number_format($order['shipping_amount'], 2) . '</td>
+                <td><strong>$' . number_format($order['total_amount'], 2) . '</strong></td>
+                <td>' . $order['items_count'] . '</td>
+                <td>' . date('d/m/Y H:i', strtotime($order['created_at'])) . '</td>
+            </tr>';
+        }
+
+        $html .= '</tbody>
+    </table>
+    <p><em>Total de pedidos: ' . count($orders) . '</em></p>
+</body>
+</html>';
+
+        $response->getBody()->write($html);
+        return $response
+            ->withHeader('Content-Type', 'application/vnd.ms-excel; charset=utf-8')
+            ->withHeader('Content-Disposition', "attachment; filename=\"{$filename}\"")
+            ->withHeader('Cache-Control', 'max-age=0');
+    }
+
+    /**
+     * Exportar a PDF (HTML simple que se puede convertir)
+     */
+    private function exportToPDF(array $orders, Response $response): Response
+    {
+        $filename = 'pedidos-' . date('Y-m-d-His') . '.pdf';
+
+        // Por ahora generar HTML que se pueda imprimir como PDF
+        // En producción se podría usar una librería como TCPDF o DOMPDF
+        $html = '<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        @page { size: A4 landscape; margin: 20mm; }
+        body { font-family: Arial, sans-serif; font-size: 10pt; }
+        h1 { color: #333; border-bottom: 2px solid #4CAF50; padding-bottom: 10px; }
+        table { border-collapse: collapse; width: 100%; margin-top: 20px; font-size: 9pt; }
+        th, td { border: 1px solid #ddd; padding: 6px; text-align: left; }
+        th { background-color: #4CAF50; color: white; font-weight: bold; }
+        tr:nth-child(even) { background-color: #f9f9f9; }
+        .footer { margin-top: 20px; text-align: center; color: #666; font-size: 8pt; }
+    </style>
+</head>
+<body>
+    <h1>Reporte de Pedidos</h1>
+    <p><strong>Fecha de generación:</strong> ' . date('d/m/Y H:i:s') . '</p>
+    <p><strong>Total de pedidos:</strong> ' . count($orders) . '</p>
+
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Número</th>
+                <th>Cliente</th>
+                <th>Email</th>
+                <th>Estado</th>
+                <th>Pago</th>
+                <th>Total</th>
+                <th>Items</th>
+                <th>Fecha</th>
+            </tr>
+        </thead>
+        <tbody>';
+
+        $totalAmount = 0;
+        foreach ($orders as $order) {
+            $totalAmount += $order['total_amount'];
+            $html .= '<tr>
+                <td>' . htmlspecialchars($order['id']) . '</td>
+                <td>' . htmlspecialchars($order['order_number']) . '</td>
+                <td>' . htmlspecialchars($order['customer_name']) . '</td>
+                <td>' . htmlspecialchars($order['customer_email']) . '</td>
+                <td>' . ucfirst($order['status']) . '</td>
+                <td>' . ucfirst($order['payment_status']) . '</td>
+                <td>$' . number_format($order['total_amount'], 2) . '</td>
+                <td>' . $order['items_count'] . '</td>
+                <td>' . date('d/m/Y', strtotime($order['created_at'])) . '</td>
+            </tr>';
+        }
+
+        $html .= '</tbody>
+        <tfoot>
+            <tr>
+                <th colspan="6">TOTAL GENERAL</th>
+                <th>$' . number_format($totalAmount, 2) . '</th>
+                <th colspan="2"></th>
+            </tr>
+        </tfoot>
+    </table>
+
+    <div class="footer">
+        <p>Generado por Sistema de Gestión de Pedidos - Deco Home Sin Rival</p>
+    </div>
+
+    <script>
+        // Auto-imprimir cuando se abre (para generar PDF)
+        window.onload = function() {
+            // Descomentar para auto-imprimir: window.print();
+        }
+    </script>
+</body>
+</html>';
+
+        $response->getBody()->write($html);
+        return $response
+            ->withHeader('Content-Type', 'text/html; charset=utf-8')
+            ->withHeader('Content-Disposition', "inline; filename=\"{$filename}\"")
+            ->withHeader('Cache-Control', 'max-age=0');
+    }
+
     private function generateOrderNumber()
     {
         $prefix = 'ORD';

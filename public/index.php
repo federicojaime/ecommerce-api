@@ -21,6 +21,9 @@ use App\Controllers\CouponController;
 use App\Controllers\NotificationController;
 use App\Controllers\MercadoPagoController;
 use App\Controllers\PaymentController;
+use App\Controllers\ReservationController;
+use App\Controllers\AttributeController;
+use App\Controllers\VariantController;
 use App\Middleware\AuthMiddleware;
 use Slim\Routing\RouteCollectorProxy;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -193,6 +196,17 @@ $app->group('/api', function (RouteCollectorProxy $group) use ($database) {
         }
     });
 
+    // Atributos públicos (colores, tamaños, etc.)
+    $group->get('/attributes', function (Request $request, Response $response) use ($database) {
+        try {
+            $controller = new AttributeController($database);
+            return $controller->getPublicAll($request, $response);
+        } catch (Exception $e) {
+            $response->getBody()->write(json_encode(['error' => $e->getMessage()]));
+            return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+        }
+    });
+
     // Categorías públicas
     $group->get('/categories', function (Request $request, Response $response) use ($database) {
         try {
@@ -254,6 +268,19 @@ $app->group('/api', function (RouteCollectorProxy $group) use ($database) {
             $controller = new MercadoPagoController($database);
             return $controller->getPublicKey($request, $response);
         } catch (Exception $e) {
+            $response->getBody()->write(json_encode(['error' => $e->getMessage()]));
+            return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+        }
+    });
+
+    // ========== RESERVAS (PÚBLICO) ==========
+    // Crear reserva (público - no requiere autenticación)
+    $group->post('/reservations', function (Request $request, Response $response) use ($database) {
+        try {
+            $controller = new ReservationController($database);
+            return $controller->create($request, $response);
+        } catch (Exception $e) {
+            error_log('Reservation creation error: ' . $e->getMessage());
             $response->getBody()->write(json_encode(['error' => $e->getMessage()]));
             return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
         }
@@ -352,6 +379,39 @@ $app->group('/api', function (RouteCollectorProxy $group) use ($database) {
             return $controller->getAll($request, $response);
         });
 
+        // ========== RUTAS DE ORDENAMIENTO (DEBEN IR ANTES DE /{id}) ==========
+        $adminGroup->get('/sorted', function (Request $request, Response $response) use ($database) {
+            $controller = new ProductController($database);
+            return $controller->getSortedProducts($request, $response);
+        });
+
+        $adminGroup->post('/reorder', function (Request $request, Response $response) use ($database) {
+            $controller = new ProductController($database);
+            return $controller->reorderProducts($request, $response);
+        });
+
+        // Actualizar productos destacados en batch
+        $adminGroup->post('/featured', function (Request $request, Response $response) use ($database) {
+            $controller = new ProductController($database);
+            return $controller->updateFeaturedProducts($request, $response);
+        });
+
+        // ========== VARIANTES DE PRODUCTO (DEBEN IR ANTES DE /{id}) ==========
+        $adminGroup->get('/{id}/variants', function (Request $request, Response $response, array $args) use ($database) {
+            $controller = new VariantController($database);
+            return $controller->getByProduct($request, $response, $args);
+        });
+
+        $adminGroup->post('/{id}/variants', function (Request $request, Response $response, array $args) use ($database) {
+            $controller = new VariantController($database);
+            return $controller->saveVariants($request, $response, $args);
+        });
+
+        $adminGroup->delete('/{id}/variants/{variantId}', function (Request $request, Response $response, array $args) use ($database) {
+            $controller = new VariantController($database);
+            return $controller->deleteVariant($request, $response, $args);
+        });
+
         $adminGroup->get('/{id}', function (Request $request, Response $response, array $args) use ($database) {
             $controller = new ProductController($database);
             return $controller->getOne($request, $response, $args);
@@ -376,6 +436,17 @@ $app->group('/api', function (RouteCollectorProxy $group) use ($database) {
         $adminGroup->delete('/{id}', function (Request $request, Response $response, array $args) use ($database) {
             $controller = new ProductController($database);
             return $controller->delete($request, $response, $args);
+        });
+
+        // ========== ARCHIVAR/DESARCHIVAR PRODUCTOS ==========
+        $adminGroup->put('/{id}/archive', function (Request $request, Response $response, array $args) use ($database) {
+            $controller = new ProductController($database);
+            return $controller->archive($request, $response, $args);
+        });
+
+        $adminGroup->put('/{id}/unarchive', function (Request $request, Response $response, array $args) use ($database) {
+            $controller = new ProductController($database);
+            return $controller->unarchive($request, $response, $args);
         });
 
         // ========== GESTIÓN DE IMÁGENES ==========
@@ -405,11 +476,60 @@ $app->group('/api', function (RouteCollectorProxy $group) use ($database) {
         });
     });
 
+    // ========== ADMIN ATTRIBUTES ==========
+    $group->group('/admin/attributes', function (RouteCollectorProxy $adminGroup) use ($database) {
+        $adminGroup->get('', function (Request $request, Response $response) use ($database) {
+            $controller = new AttributeController($database);
+            return $controller->getAll($request, $response);
+        });
+
+        $adminGroup->post('', function (Request $request, Response $response) use ($database) {
+            $controller = new AttributeController($database);
+            return $controller->create($request, $response);
+        });
+
+        $adminGroup->put('/{id}', function (Request $request, Response $response, array $args) use ($database) {
+            $controller = new AttributeController($database);
+            return $controller->update($request, $response, $args);
+        });
+
+        $adminGroup->delete('/{id}', function (Request $request, Response $response, array $args) use ($database) {
+            $controller = new AttributeController($database);
+            return $controller->delete($request, $response, $args);
+        });
+
+        $adminGroup->post('/{id}/values', function (Request $request, Response $response, array $args) use ($database) {
+            $controller = new AttributeController($database);
+            return $controller->createValue($request, $response, $args);
+        });
+
+        $adminGroup->put('/{id}/values/{valueId}', function (Request $request, Response $response, array $args) use ($database) {
+            $controller = new AttributeController($database);
+            return $controller->updateValue($request, $response, $args);
+        });
+
+        $adminGroup->delete('/{id}/values/{valueId}', function (Request $request, Response $response, array $args) use ($database) {
+            $controller = new AttributeController($database);
+            return $controller->deleteValue($request, $response, $args);
+        });
+    });
+
     // ========== ADMIN CATEGORIES ==========
     $group->group('/admin/categories', function (RouteCollectorProxy $adminGroup) use ($database) {
         $adminGroup->get('', function (Request $request, Response $response) use ($database) {
             $controller = new CategoryController($database);
             return $controller->getAll($request, $response);
+        });
+
+        // Ordenamiento de categorías - DEBE IR ANTES de /{id}
+        $adminGroup->get('/sorted', function (Request $request, Response $response) use ($database) {
+            $controller = new CategoryController($database);
+            return $controller->getSortedCategories($request, $response);
+        });
+
+        $adminGroup->post('/reorder', function (Request $request, Response $response) use ($database) {
+            $controller = new CategoryController($database);
+            return $controller->reorderCategories($request, $response);
         });
 
         $adminGroup->get('/{id}', function (Request $request, Response $response, array $args) use ($database) {
@@ -486,6 +606,33 @@ $app->group('/api', function (RouteCollectorProxy $group) use ($database) {
         $adminGroup->delete('/{id}', function (Request $request, Response $response, array $args) use ($database) {
             $controller = new OrderController($database);
             return $controller->delete($request, $response, $args);
+        });
+    });
+
+    // ========== ADMIN RESERVATIONS ==========
+    $group->group('/admin/reservations', function (RouteCollectorProxy $adminGroup) use ($database) {
+        // Listar todas las reservas
+        $adminGroup->get('', function (Request $request, Response $response) use ($database) {
+            $controller = new ReservationController($database);
+            return $controller->getAll($request, $response);
+        });
+
+        // Detalle de una reserva
+        $adminGroup->get('/{id}', function (Request $request, Response $response, array $args) use ($database) {
+            $controller = new ReservationController($database);
+            return $controller->getOne($request, $response, $args);
+        });
+
+        // Confirmar reserva
+        $adminGroup->post('/{id}/confirm', function (Request $request, Response $response, array $args) use ($database) {
+            $controller = new ReservationController($database);
+            return $controller->confirm($request, $response, $args);
+        });
+
+        // Rechazar reserva
+        $adminGroup->post('/{id}/reject', function (Request $request, Response $response, array $args) use ($database) {
+            $controller = new ReservationController($database);
+            return $controller->reject($request, $response, $args);
         });
     });
 

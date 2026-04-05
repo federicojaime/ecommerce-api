@@ -7,7 +7,8 @@
       "Bash(composer require:*)",
       "Bash(openssl rand:*)",
       "Bash(mysql:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(php:*)"
     ],
     "deny": [],
     "ask": []

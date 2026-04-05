@@ -5,6 +5,7 @@ use App\Controllers\CategoryController;
 use App\Controllers\UserController;
 use App\Controllers\OrderController;
 use App\Controllers\DashboardController;
+use App\Controllers\ReservationController;
 use App\Middleware\AuthMiddleware;
 use Slim\Routing\RouteCollectorProxy;
 
@@ -39,10 +40,21 @@ return function ($app) {
         // Admin Products
         $group->group('/admin/products', function (RouteCollectorProxy $adminGroup) {
             $adminGroup->get('', [ProductController::class, 'getAll']);
-            $adminGroup->get('/{id}', [ProductController::class, 'getOne']);
             $adminGroup->post('', [ProductController::class, 'create']);
+
+            // Rutas de ordenamiento (deben ir ANTES de /{id})
+            $adminGroup->get('/sorted', [ProductController::class, 'getSortedProducts']);
+            $adminGroup->post('/reorder', [ProductController::class, 'reorderProducts']);
+
+            // Rutas de imágenes (deben ir ANTES de /{id})
+            $adminGroup->post('/{id}/images', [ProductController::class, 'uploadImages']);
+            $adminGroup->delete('/{product_id}/images/{image_id}', [ProductController::class, 'deleteImage']);
+            $adminGroup->put('/{product_id}/images/reorder', [ProductController::class, 'reorderImages']);
+            $adminGroup->put('/{product_id}/images/{image_id}/primary', [ProductController::class, 'setPrimaryImage']);
+
+            $adminGroup->get('/{id}', [ProductController::class, 'getOne']);
             $adminGroup->delete('/{id}', [ProductController::class, 'delete']);
-            
+
             // Manejar tanto PUT como POST para updates
             $adminGroup->map(['PUT', 'POST'], '/{id}', [ProductController::class, 'update']);
         });
@@ -67,13 +79,29 @@ return function ($app) {
         
         // Admin Orders
         $group->group('/admin/orders', function (RouteCollectorProxy $adminGroup) {
+            $adminGroup->get('/export', [OrderController::class, 'export']);
             $adminGroup->get('', [OrderController::class, 'getAll']);
             $adminGroup->get('/{id}', [OrderController::class, 'getOne']);
             $adminGroup->post('', [OrderController::class, 'create']);
             $adminGroup->put('/{id}/status', [OrderController::class, 'updateStatus']);
             $adminGroup->delete('/{id}', [OrderController::class, 'delete']);
         });
-        
+
+        // Admin Reservations
+        $group->group('/admin/reservations', function (RouteCollectorProxy $adminGroup) {
+            $adminGroup->get('/export', [ReservationController::class, 'export']); // Si existiera
+            $adminGroup->get('', [ReservationController::class, 'getAll']);
+            $adminGroup->get('/{id}/receipt', [ReservationController::class, 'generateReceipt']);
+            $adminGroup->get('/{id}', [ReservationController::class, 'getOne']);
+            $adminGroup->post('/{id}/confirm', [ReservationController::class, 'confirm']);
+            $adminGroup->post('/{id}/reject', [ReservationController::class, 'reject']);
+        });
+
     })->add(new AuthMiddleware());
-    
+
+    // Rutas públicas de reservas (sin autenticación)
+    $app->group('/api', function (RouteCollectorProxy $group) {
+        $group->post('/reservations', [ReservationController::class, 'create']);
+    });
+
 };
