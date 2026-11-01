@@ -11,7 +11,7 @@
         "respect/validation": "^2.2",
         "php-di/php-di": "^7.0",
         "mercadopago/dx-php": "^3.7",
-        "phpmailer/phpmailer": "^7.0"
+        "phpmailer/phpmailer": "^7.1"
     },
     "autoload": {
         "psr-4": {
